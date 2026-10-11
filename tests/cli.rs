@@ -45,7 +45,7 @@ fn cli_given_comment_exits_two() -> std::io::Result<()> {
 }
 
 #[test]
-fn cli_given_check_alias_and_bdd_comment_exits_zero() -> std::io::Result<()> {
+fn cli_given_ignored_positional_and_bdd_comment_exits_zero() -> std::io::Result<()> {
     // given
     let input = r##"{"tool_name":"Write","tool_input":{"file_path":"test.py","content":"# given\nprint(1)"}}"##;
 
