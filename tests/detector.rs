@@ -180,3 +180,35 @@ fn detect_given_c_block_comment_returns_block_comment() {
     assert!(comments[0].text.contains("C block comment"));
     assert_eq!(comments[0].comment_type, CommentType::Block);
 }
+
+#[test]
+fn detect_given_javascript_line_comment_with_docstrings_is_not_a_docstring() {
+    // given
+    let detector = CommentDetector::new();
+    let code = "// regular comment\nconst x = 1;";
+
+    // when
+    let comments = detector.detect(code, "test.js", true);
+
+    // then
+    assert_eq!(comments.len(), 1);
+    assert!(!comments[0].is_docstring);
+}
+
+#[test]
+fn detect_given_comment_inside_html_script_element_is_detected() {
+    // given
+    let detector = CommentDetector::new();
+    let code =
+        "<html><body>\n<script>\n// injected comment\nconst x = 1;\n</script>\n</body></html>";
+
+    // when
+    let comments = detector.detect(code, "page.html", true);
+
+    // then
+    assert!(
+        comments
+            .iter()
+            .any(|comment| comment.text.contains("injected comment"))
+    );
+}

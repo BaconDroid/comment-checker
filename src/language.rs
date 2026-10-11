@@ -15,7 +15,7 @@ pub fn language_for_path(file_path: &str) -> Option<LanguageSpec> {
     })
 }
 
-fn comment_query(name: &str) -> &'static str {
+pub(crate) fn comment_query(name: &str) -> &'static str {
     match name {
         "rust" | "java" => "(line_comment) @comment\n(block_comment) @comment",
         "kotlin" => "(line_comment) @comment\n(multiline_comment) @comment",
@@ -23,7 +23,11 @@ fn comment_query(name: &str) -> &'static str {
     }
 }
 
-fn docstring_query(name: &str) -> Option<&'static str> {
+pub(crate) fn docstring_prefix(name: &str) -> Option<&'static str> {
+    matches!(name, "javascript" | "typescript" | "tsx" | "java").then_some("/**")
+}
+
+pub(crate) fn docstring_query(name: &str) -> Option<&'static str> {
     match name {
         "python" => Some(
             r"
@@ -33,16 +37,14 @@ fn docstring_query(name: &str) -> Option<&'static str> {
 	",
         ),
         "javascript" | "typescript" | "tsx" => Some(
-            r#"
+            r"
 		(comment) @jsdoc
-		(#match? @jsdoc "^/\*\*")
-	"#,
+	",
         ),
         "java" => Some(
-            r#"
+            r"
 		(block_comment) @javadoc
-		(#match? @javadoc "^/\*\*")
-	"#,
+	",
         ),
         _ => None,
     }
