@@ -16,7 +16,7 @@ Each supported platform (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64
 Direct dependencies are exactly `serde` (data model + serialization), `serde_json` (wire I/O only), `tree-sitter` (parsing and matching, via queries), and `tree-sitter-language-pack` (language, grammar, and identification only). Do not add dynamic `serde_json::Value` modeling, `TreeCursor` comment walks, or the pack's `get_parser`/`process`/runtime download; comments and docstrings are collected with `tree-sitter` queries. Keep direct dependencies to this set unless a change is justified and convention-following.
 
 ## Upstream
-This fork is **not** merged or synced from upstream [`code-yeongyu/go-claude-code-comment-checker`](https://github.com/code-yeongyu/go-claude-code-comment-checker); the two have diverged (the archived `go/` tree and the `clap`/`itoa`/`criterion`/`tempfile` and N-API/wasm binding stacks are gone, and the detector is a query-based rewrite). Review upstream by hand and port only convention-following, non-superseded changes:
+This is an independent repository sharing history with upstream [`code-yeongyu/go-claude-code-comment-checker`](https://github.com/code-yeongyu/go-claude-code-comment-checker); the two have diverged (the archived `go/` tree and the `clap`/`itoa`/`criterion`/`tempfile` and N-API/wasm binding stacks are gone, and the detector is a query-based rewrite). Review upstream by hand and port only convention-following, non-superseded changes:
 
 ```bash
 git remote add upstream https://github.com/code-yeongyu/go-claude-code-comment-checker.git
