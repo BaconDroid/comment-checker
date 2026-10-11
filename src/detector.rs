@@ -62,8 +62,16 @@ impl CommentDetector {
             include_docstrings,
             &mut comments,
         );
+        dedupe(&mut comments);
         comments
     }
+}
+
+/// Drop duplicate captures: an injected region can overlap what the host comment query already
+/// matched, which would otherwise report the same comment twice.
+fn dedupe(comments: &mut Vec<CommentInfo>) {
+    let mut seen = std::collections::HashSet::new();
+    comments.retain(|comment| seen.insert((comment.line_number, comment.normalized_text())));
 }
 
 fn runtime_by_name(name: &str) -> Option<Arc<Runtime>> {

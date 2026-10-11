@@ -1,4 +1,6 @@
-use comment_checker::api::{check_hook_input, check_hook_input_json, detect_comments_json};
+use comment_checker::api::{
+    check_hook_input, check_hook_input_json, check_hook_input_with_options, detect_comments_json,
+};
 use serde_json::Value;
 
 #[test]
@@ -57,6 +59,42 @@ fn detect_comments_json_given_python_comment_returns_comment_payload() -> serde_
 fn check_hook_input_given_camel_case_keys_and_null_fields_parses() {
     // given
     let input = r##"{"toolName":"Write","toolInput":{"filePath":"test.py","content":"# comment\nprint(1)","edits":null}}"##;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+}
+
+#[test]
+fn check_hook_input_with_options_given_docstrings_disabled_returns_pass() {
+    // given
+    let input = r#"{"tool_name":"Write","tool_input":{"file_path":"test.py","content":"\"\"\"doc\"\"\"\nprint(1)"}}"#;
+
+    // when
+    let result = check_hook_input_with_options(input, "", false);
+
+    // then
+    assert_eq!(result.exit_code, 0);
+}
+
+#[test]
+fn check_hook_input_with_options_given_docstrings_enabled_exits_two() {
+    // given
+    let input = r#"{"tool_name":"Write","tool_input":{"file_path":"test.py","content":"\"\"\"doc\"\"\"\nprint(1)"}}"#;
+
+    // when
+    let result = check_hook_input_with_options(input, "", true);
+
+    // then
+    assert_eq!(result.exit_code, 2);
+}
+
+#[test]
+fn check_hook_input_given_edit_adding_comment_with_repeated_text_exits_two() {
+    // given: the added `# note` is text that already existed later in old_string
+    let input = r##"{"tool_name":"Edit","tool_input":{"file_path":"test.py","old_string":"# note\nx = 1\n","new_string":"# note\nx = 1\n# note\n"}}"##;
 
     // when
     let result = check_hook_input(input, "");

@@ -74,13 +74,24 @@ where
 
 #[must_use]
 pub fn check_hook_input(input: &str, custom_prompt: &str) -> HookCheckResult {
+    check_hook_input_with_options(input, custom_prompt, true)
+}
+
+/// Same as [`check_hook_input`], with the `include_docstrings` toggle threaded through the hook
+/// boundary so both states are testable.
+#[must_use]
+pub fn check_hook_input_with_options(
+    input: &str,
+    custom_prompt: &str,
+    include_docstrings: bool,
+) -> HookCheckResult {
     if input.is_empty() {
         return skip("No input provided");
     }
 
     serde_json::from_str::<HookInput>(input).map_or_else(
         |_| skip("Invalid input format"),
-        |hook_input| evaluate(&hook_input, custom_prompt),
+        |hook_input| evaluate(&hook_input, custom_prompt, include_docstrings),
     )
 }
 
@@ -91,11 +102,15 @@ pub fn check_hook_input_from_reader<R: std::io::Read>(
 ) -> HookCheckResult {
     serde_json::from_reader::<R, HookInput>(reader).map_or_else(
         |_| skip("Invalid input format"),
-        |hook_input| evaluate(&hook_input, custom_prompt),
+        |hook_input| evaluate(&hook_input, custom_prompt, true),
     )
 }
 
-fn evaluate(hook_input: &HookInput, custom_prompt: &str) -> HookCheckResult {
+fn evaluate(
+    hook_input: &HookInput,
+    custom_prompt: &str,
+    include_docstrings: bool,
+) -> HookCheckResult {
     let file_path = hook_input.tool_input.file_path.as_str();
     if file_path.is_empty() {
         return skip("No file path provided");
@@ -115,6 +130,7 @@ fn evaluate(hook_input: &HookInput, custom_prompt: &str) -> HookCheckResult {
                 &hook_input.tool_input.old_string,
                 &hook_input.tool_input.new_string,
                 file_path,
+                include_docstrings,
             )
         }
         "MultiEdit" => {
@@ -131,6 +147,7 @@ fn evaluate(hook_input: &HookInput, custom_prompt: &str) -> HookCheckResult {
                     &edit.old_string,
                     &edit.new_string,
                     file_path,
+                    include_docstrings,
                 ));
             }
             comments
@@ -140,7 +157,7 @@ fn evaluate(hook_input: &HookInput, custom_prompt: &str) -> HookCheckResult {
             if content.is_empty() {
                 return skip("No content to check");
             }
-            detector.detect(content, file_path, true)
+            detector.detect(content, file_path, include_docstrings)
         }
     };
 
@@ -184,31 +201,61 @@ fn detect_new_comments_for_edit(
     old_string: &str,
     new_string: &str,
     file_path: &str,
+    include_docstrings: bool,
 ) -> Vec<CommentInfo> {
-    let old_comments = detector.detect(old_string, file_path, true);
-    let new_comments = detector.detect(new_string, file_path, true);
-    filter_new_comments(&old_comments, &new_comments)
+    let comments = detector.detect(new_string, file_path, include_docstrings);
+    if old_string.is_empty() {
+        return comments;
+    }
+    // Keep only comments that sit on a line the edit actually added, using an LCS over the old and
+    // new lines. This is accurate for repeated/moved text, where a plain set-membership check would
+    // drop a genuinely new comment whose text already appeared elsewhere.
+    let added = added_lines(old_string, new_string);
+    comments
+        .into_iter()
+        .filter(|comment| added.contains(&comment.line_number.saturating_sub(1)))
+        .collect()
 }
 
-fn filter_new_comments(
-    old_comments: &[CommentInfo],
-    new_comments: &[CommentInfo],
-) -> Vec<CommentInfo> {
-    if old_comments.is_empty() {
-        return new_comments.to_vec();
+/// New (added) line indices in `new_content`, computed with an LCS over trimmed lines.
+fn added_lines(old_content: &str, new_content: &str) -> std::collections::HashSet<usize> {
+    let old: Vec<&str> = old_content.lines().map(str::trim).collect();
+    let new: Vec<&str> = new_content.lines().map(str::trim).collect();
+    if old.len().saturating_mul(new.len()) > 4_000_000 {
+        let old_set: std::collections::HashSet<&str> = old.iter().copied().collect();
+        return new
+            .iter()
+            .enumerate()
+            .filter(|(_, line)| !old_set.contains(*line))
+            .map(|(index, _)| index)
+            .collect();
     }
-    let old_texts: std::collections::HashSet<String> = old_comments
-        .iter()
-        .map(CommentInfo::normalized_text)
-        .collect();
-    new_comments
-        .iter()
-        .filter(|comment| {
-            let normalized = comment.normalized_text();
-            !old_texts.contains(normalized.as_str())
-        })
-        .cloned()
-        .collect()
+
+    let (rows, columns) = (new.len(), old.len());
+    let mut lengths = vec![vec![0_u32; columns + 1]; rows + 1];
+    for row in (0..rows).rev() {
+        for column in (0..columns).rev() {
+            lengths[row][column] = if new[row] == old[column] {
+                lengths[row + 1][column + 1] + 1
+            } else {
+                lengths[row + 1][column].max(lengths[row][column + 1])
+            };
+        }
+    }
+    let mut matched = vec![false; rows];
+    let (mut row, mut column) = (0, 0);
+    while row < rows && column < columns {
+        if new[row] == old[column] {
+            matched[row] = true;
+            row += 1;
+            column += 1;
+        } else if lengths[row + 1][column] >= lengths[row][column + 1] {
+            row += 1;
+        } else {
+            column += 1;
+        }
+    }
+    (0..rows).filter(|&index| !matched[index]).collect()
 }
 
 fn skip(reason: &str) -> HookCheckResult {
