@@ -18,6 +18,7 @@ from __future__ import annotations
 import difflib
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -64,6 +65,7 @@ SHARED = [
     "npm",
     "parity",
     "src/cli.rs",
+    "src/engine.rs",
     "src/main.rs",
     "tests/parity.rs",
 ]
@@ -134,15 +136,22 @@ def main() -> int:
         sibling = Path(sibling_env)
     else:
         temp_dir = Path(tempfile.mkdtemp(prefix="parity-sibling-"))
-        clone = ["git", "clone", "--depth", "1", "--quiet"]
+        dest = temp_dir / "sibling"
         ref = os.environ.get("PARITY_REF")
-        if ref:
-            clone += ["--branch", ref]
-        clone += [REPOS[sibling_name], str(temp_dir / "sibling")]
-        result = subprocess.run(clone, check=False)  # noqa: S603
-        if result.returncode != 0:
+
+        def clone(extra: list[str]) -> int:
+            command = ["git", "clone", "--depth", "1", "--quiet", *extra, REPOS[sibling_name], str(dest)]
+            return subprocess.run(command, check=False).returncode  # noqa: S603
+
+        result = clone(["--branch", ref] if ref else [])
+        if result != 0 and ref:
+            # A coordinated change is pushed under the same branch name in both repos; if the
+            # sibling does not carry that branch, fall back to its default branch.
+            shutil.rmtree(dest, ignore_errors=True)
+            result = clone([])
+        if result != 0:
             fail(f"could not clone sibling repo {REPOS[sibling_name]}")
-        sibling = temp_dir / "sibling"
+        sibling = dest
 
     if detect_name(sibling) != sibling_name:
         fail(f"{sibling} does not look like {sibling_name}")

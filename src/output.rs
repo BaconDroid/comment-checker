@@ -1,3 +1,4 @@
+use crate::engine;
 use crate::filters::AgentMemoFilter;
 use crate::models::CommentInfo;
 
@@ -16,32 +17,9 @@ pub fn build_comments_xml(comments: &[CommentInfo], file_path: &str) -> String {
     output
 }
 
-fn push_escaped_text(output: &mut String, text: &str) {
-    for character in text.chars() {
-        match character {
-            '&' => output.push_str("&amp;"),
-            '<' => output.push_str("&lt;"),
-            '>' => output.push_str("&gt;"),
-            _ => output.push(character),
-        }
-    }
-}
-
-fn push_escaped_attribute(output: &mut String, text: &str) {
-    for character in text.chars() {
-        match character {
-            '&' => output.push_str("&amp;"),
-            '<' => output.push_str("&lt;"),
-            '>' => output.push_str("&gt;"),
-            '"' => output.push_str("&quot;"),
-            _ => output.push(character),
-        }
-    }
-}
-
 fn push_comments_xml_header(output: &mut String, file_path: &str) {
     output.push_str("<comments file=\"");
-    push_escaped_attribute(output, file_path);
+    engine::push_escaped_attribute(output, file_path);
     output.push_str("\">\n");
 }
 
@@ -49,7 +27,7 @@ fn push_comment_xml(output: &mut String, comment: &CommentInfo) {
     output.push_str("\t<comment line-number=\"");
     output.push_str(&comment.line_number.to_string());
     output.push_str("\">");
-    push_escaped_text(output, &comment.text);
+    engine::push_escaped_text(output, &comment.text);
     output.push_str("</comment>\n");
 }
 

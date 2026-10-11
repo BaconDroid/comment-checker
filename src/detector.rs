@@ -1,15 +1,11 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::ops::ControlFlow;
 use std::sync::{Arc, LazyLock, Mutex};
-use std::time::{Duration, Instant};
 
-use tree_sitter::{ParseOptions, ParseState, Parser, Query, QueryCursor, StreamingIterator};
+use tree_sitter::Query;
 
+use crate::engine;
 use crate::language::{docstring_prefix, language_for_path};
 use crate::models::{CommentInfo, CommentType};
-
-const PARSE_TIME_BUDGET: Duration = Duration::from_millis(50);
 
 struct Runtime {
     name: String,
@@ -21,10 +17,6 @@ struct Runtime {
 
 static RUNTIMES: LazyLock<Mutex<HashMap<String, Arc<Runtime>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
-
-thread_local! {
-    static PARSERS: RefCell<HashMap<String, Parser>> = RefCell::new(HashMap::new());
-}
 
 #[derive(Debug, Default)]
 pub struct CommentDetector;
@@ -62,16 +54,11 @@ impl CommentDetector {
             include_docstrings,
             &mut comments,
         );
-        dedupe(&mut comments);
-        comments
+        // An injected region can overlap what the host comment query already matched.
+        engine::dedupe_by(comments, |comment| {
+            (comment.line_number, comment.normalized_text())
+        })
     }
-}
-
-/// Drop duplicate captures: an injected region can overlap what the host comment query already
-/// matched, which would otherwise report the same comment twice.
-fn dedupe(comments: &mut Vec<CommentInfo>) {
-    let mut seen = std::collections::HashSet::new();
-    comments.retain(|comment| seen.insert((comment.line_number, comment.normalized_text())));
 }
 
 fn runtime_by_name(name: &str) -> Option<Arc<Runtime>> {
@@ -100,41 +87,7 @@ fn runtime_by_name(name: &str) -> Option<Arc<Runtime>> {
 }
 
 fn parse_with_runtime(runtime: &Runtime, source: &[u8]) -> Option<tree_sitter::Tree> {
-    PARSERS.with(|parsers| {
-        let mut parsers = parsers.borrow_mut();
-        if let Some(parser) = parsers.get_mut(&runtime.name) {
-            parse_with_budget(parser, source)
-        } else {
-            let mut parser = Parser::new();
-            if parser.set_language(&runtime.language).is_err() {
-                return None;
-            }
-            let tree = parse_with_budget(&mut parser, source);
-            parsers.insert(runtime.name.clone(), parser);
-            tree
-        }
-    })
-}
-
-fn parse_with_budget(parser: &mut Parser, source: &[u8]) -> Option<tree_sitter::Tree> {
-    let start = Instant::now();
-    let mut progress = |_state: &ParseState| {
-        if start.elapsed() > PARSE_TIME_BUDGET {
-            ControlFlow::Break(())
-        } else {
-            ControlFlow::Continue(())
-        }
-    };
-    let options = ParseOptions::new().progress_callback(&mut progress);
-    let len = source.len();
-    let mut read = |offset: usize, _: tree_sitter::Point| {
-        if offset < len {
-            &source[offset..]
-        } else {
-            Default::default()
-        }
-    };
-    parser.parse_with_options(&mut read, None, Some(options))
+    engine::parse_cached(&runtime.name, &runtime.language, source)
 }
 
 fn extract(
@@ -202,36 +155,23 @@ fn captures_to_comments(
     force_docstring: bool,
     row_offset: usize,
 ) -> Vec<CommentInfo> {
-    let mut cursor = QueryCursor::new();
-    cursor.set_byte_range(0..source.len());
-    let mut captures = cursor.captures(query, tree.root_node(), source);
-    let mut comments = Vec::new();
-    captures.advance();
-    while let Some((query_match, capture_index)) = captures.get() {
-        let Some(capture) = query_match.captures.get(*capture_index) else {
-            captures.advance();
-            continue;
-        };
-        let node = capture.node;
-        let Ok(text) = node.utf8_text(source) else {
-            captures.advance();
-            continue;
-        };
-        let comment_type = if force_docstring {
-            CommentType::Docstring
-        } else {
-            determine_comment_type(text, node.kind())
-        };
-        comments.push(CommentInfo::new(
-            text,
-            node.start_position().row + 1 + row_offset,
-            file_path,
-            comment_type,
-            force_docstring,
-        ));
-        captures.advance();
-    }
-    comments
+    engine::capture_texts(query, tree, source)
+        .into_iter()
+        .map(|(row, node_kind, text)| {
+            let comment_type = if force_docstring {
+                CommentType::Docstring
+            } else {
+                determine_comment_type(&text, node_kind)
+            };
+            CommentInfo::new(
+                text,
+                row + 1 + row_offset,
+                file_path,
+                comment_type,
+                force_docstring,
+            )
+        })
+        .collect()
 }
 
 fn docstrings_from_query(
@@ -279,42 +219,17 @@ fn collect_injected_comments(
     let Some(query) = &runtime.injection_query else {
         return;
     };
-    let capture_names = query.capture_names();
-    let mut cursor = QueryCursor::new();
-    cursor.set_byte_range(0..source.len());
-    let mut matches = cursor.matches(query, tree.root_node(), source);
-    matches.advance();
-    while let Some(query_match) = matches.get() {
-        let mut content: Option<tree_sitter::Node> = None;
-        let mut injected_language: Option<&str> = None;
-        for setting in query.property_settings(query_match.pattern_index) {
-            if setting.key.as_ref() == "injection.language" {
-                injected_language = setting.value.as_deref();
-            }
-        }
-        for capture in query_match.captures {
-            match capture_names.get(capture.index as usize).copied() {
-                Some("injection.content") => content = Some(capture.node),
-                Some("injection.language") => {
-                    injected_language = capture.node.utf8_text(source).ok();
-                }
-                _ => {}
-            }
-        }
-        if let (Some(content), Some(injected)) = (content, injected_language) {
-            if let (Ok(text), Some(inner)) =
-                (content.utf8_text(source), runtime_by_name(injected.trim()))
-            {
-                comments.extend(detects_injected(
-                    &inner,
-                    text,
-                    file_path,
-                    content.start_position().row,
-                    include_docstrings,
-                ));
-            }
-        }
-        matches.advance();
+    for injection in engine::injection_regions(query, tree, source) {
+        let Some(inner) = runtime_by_name(&injection.language) else {
+            continue;
+        };
+        comments.extend(detects_injected(
+            &inner,
+            &injection.content,
+            file_path,
+            injection.row,
+            include_docstrings,
+        ));
     }
 }
 

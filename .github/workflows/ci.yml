@@ -44,6 +44,8 @@ jobs:
 
   parity:
     runs-on: ubuntu-latest
+    env:
+      PARITY_REF: ${{ github.head_ref || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
 

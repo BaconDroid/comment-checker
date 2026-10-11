@@ -1,6 +1,7 @@
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
 use crate::detector::CommentDetector;
+use crate::engine::null_default;
 use crate::filters::apply_filters;
 use crate::language::language_for_path;
 use crate::models::CommentInfo;
@@ -62,14 +63,6 @@ struct HookInput {
     tool_name: String,
     #[serde(default, alias = "toolInput", deserialize_with = "null_default")]
     tool_input: ToolInput,
-}
-
-fn null_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
-where
-    D: Deserializer<'de>,
-    T: Default + Deserialize<'de>,
-{
-    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
 }
 
 #[must_use]
@@ -219,43 +212,7 @@ fn detect_new_comments_for_edit(
 
 /// New (added) line indices in `new_content`, computed with an LCS over trimmed lines.
 fn added_lines(old_content: &str, new_content: &str) -> std::collections::HashSet<usize> {
-    let old: Vec<&str> = old_content.lines().map(str::trim).collect();
-    let new: Vec<&str> = new_content.lines().map(str::trim).collect();
-    if old.len().saturating_mul(new.len()) > 4_000_000 {
-        let old_set: std::collections::HashSet<&str> = old.iter().copied().collect();
-        return new
-            .iter()
-            .enumerate()
-            .filter(|(_, line)| !old_set.contains(*line))
-            .map(|(index, _)| index)
-            .collect();
-    }
-
-    let (rows, columns) = (new.len(), old.len());
-    let mut lengths = vec![vec![0_u32; columns + 1]; rows + 1];
-    for row in (0..rows).rev() {
-        for column in (0..columns).rev() {
-            lengths[row][column] = if new[row] == old[column] {
-                lengths[row + 1][column + 1] + 1
-            } else {
-                lengths[row + 1][column].max(lengths[row][column + 1])
-            };
-        }
-    }
-    let mut matched = vec![false; rows];
-    let (mut row, mut column) = (0, 0);
-    while row < rows && column < columns {
-        if new[row] == old[column] {
-            matched[row] = true;
-            row += 1;
-            column += 1;
-        } else if lengths[row + 1][column] >= lengths[row][column + 1] {
-            row += 1;
-        } else {
-            column += 1;
-        }
-    }
-    (0..rows).filter(|&index| !matched[index]).collect()
+    crate::engine::added_lines(old_content, new_content)
 }
 
 fn skip(reason: &str) -> HookCheckResult {
