@@ -17,9 +17,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Rust
-        run: |
-          rustup component add rustfmt clippy
-          rustup target add wasm32-unknown-unknown
+        run: rustup component add rustfmt clippy
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -32,11 +30,6 @@ jobs:
       - name: Clippy core
         run: cargo clippy -p comment-checker --all-targets --all-features -- -D warnings
 
-      - name: Clippy bindings
-        run: |
-          cargo clippy -p comment-checker-napi --all-targets -- -D warnings
-          cargo clippy -p comment-checker-wasm --all-targets -- -D warnings
-
       - name: Test
         run: cargo test -p comment-checker --all-targets --all-features
 
@@ -48,40 +41,3 @@ jobs:
 
       - name: Test npm wrapper
         run: node --test npm/comment-checker/*.test.js
-
-  wasm:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Rust and LLVM
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang lld
-          rustup target add wasm32-unknown-unknown
-
-      - name: Build wasm binding
-        env:
-          CC_wasm32_unknown_unknown: clang
-        run: cargo build -p comment-checker-wasm --lib --target wasm32-unknown-unknown --locked
-
-  napi:
-    strategy:
-      fail-fast: false
-      matrix:
-        runner:
-          - ubuntu-latest
-          - macos-15
-          - macos-15-intel
-          - windows-latest
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-
-      - name: Build N-API binding
-        run: cargo build -p comment-checker-napi --release --locked

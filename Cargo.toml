@@ -10,7 +10,7 @@ keywords = ["comments", "tree-sitter", "claude-code", "opencode", "hook"]
 categories = ["command-line-utilities", "development-tools"]
 
 [workspace]
-members = [".", "bindings/napi", "bindings/wasm"]
+members = ["."]
 resolver = "3"
 
 [[bin]]

@@ -109,8 +109,6 @@ if tree-sitter supports it, we support it. the production CLI is Rust.
 6. filters out allowed patterns (BDD, directives, shebangs)
 7. if anything remains → exit 2 with warning message
 
-the Rust workspace also has buildable `wasm32-unknown-unknown` and N-API binding crates for future consumers. those paths are CI buildability gates for now; npm still ships native binaries.
-
 ## exit codes
 
 | code | meaning |

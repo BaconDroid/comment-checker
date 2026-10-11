@@ -1,10 +1,10 @@
 # Agent notes: go-claude-code-comment-checker
 
-The Rust crate at the repository root (`src/`, `tests/`, `benches/`, `bindings/`, `npm/`) is the current implementation.
+The Rust crate at the repository root (`src/`, `tests/`, `benches/`, `npm/`) is the current implementation.
 
 ## Commands (the same ones CI runs, `.github/workflows/ci.yml`)
 - Format: `cargo fmt --all -- --check`
-- Lint: `cargo clippy -p comment-checker --all-targets --all-features -- -D warnings`, plus the napi and wasm clippy steps in `ci.yml`
+- Lint: `cargo clippy -p comment-checker --all-targets --all-features -- -D warnings`
 - Full test: `cargo test -p comment-checker --all-targets --all-features`
 - Focused test: `cargo test -p comment-checker --test <name>`, where `<name>` is one of the files in `tests/*.rs`
 - npm wrapper: `node --test npm/comment-checker/*.test.js`

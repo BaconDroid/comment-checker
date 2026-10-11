@@ -20,14 +20,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Rust
-        run: |
-          rustup component add rustfmt clippy
-          rustup target add wasm32-unknown-unknown
-
-      - name: Set up LLVM for wasm
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang lld
+        run: rustup component add rustfmt clippy
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -40,24 +33,11 @@ jobs:
       - name: Clippy core
         run: cargo clippy -p comment-checker --all-targets --all-features -- -D warnings
 
-      - name: Clippy bindings
-        run: |
-          cargo clippy -p comment-checker-napi --all-targets -- -D warnings
-          cargo clippy -p comment-checker-wasm --all-targets -- -D warnings
-
       - name: Test Rust
         run: cargo test -p comment-checker --all-targets --all-features
 
       - name: Compile benchmarks
         run: cargo bench -p comment-checker --bench comment_checker --no-run
-
-      - name: Build wasm binding
-        env:
-          CC_wasm32_unknown_unknown: clang
-        run: cargo build -p comment-checker-wasm --lib --target wasm32-unknown-unknown --locked
-
-      - name: Build N-API binding
-        run: cargo build -p comment-checker-napi --release --locked
 
       - name: Test npm package
         run: node --test npm/comment-checker/*.test.js
@@ -199,8 +179,6 @@ jobs:
             - macOS (arm64, x64)
             - Linux (arm64, x64)
             - Windows (x64)
-
-            The Rust library also has CI-enforced wasm32 and N-API buildability gates for future integrations.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
