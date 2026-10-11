@@ -87,9 +87,9 @@ fn docstring_query(name: &str) -> Option<&'static str> {
     match name {
         "python" => Some(
             r"
-		(module . (expression_statement (string) @docstring))
-		(class_definition body: (block . (expression_statement (string) @docstring)))
-		(function_definition body: (block . (expression_statement (string) @docstring)))
+		(module . (string) @docstring)
+		(class_definition body: (block . (string) @docstring))
+		(function_definition body: (block . (string) @docstring))
 	",
         ),
         "javascript" | "typescript" | "tsx" => Some(
@@ -100,7 +100,7 @@ fn docstring_query(name: &str) -> Option<&'static str> {
         ),
         "java" => Some(
             r#"
-		(comment) @javadoc
+		(block_comment) @javadoc
 		(#match? @javadoc "^/\*\*")
 	"#,
         ),

@@ -10,6 +10,7 @@ use crate::models::{CommentInfo, CommentType};
 struct Runtime {
     language: tree_sitter::Language,
     comment_query: Query,
+    docstring_query: Option<Query>,
 }
 
 static RUNTIMES: LazyLock<Mutex<HashMap<&'static str, Arc<Runtime>>>> =
@@ -53,7 +54,15 @@ impl CommentDetector {
             false,
         );
         if include_docstrings {
-            comments.extend(detect_docstrings(spec.name, content, file_path, &comments));
+            if let Some(docstring_query) = &runtime.docstring_query {
+                comments.extend(captures_to_comments(
+                    docstring_query,
+                    &tree,
+                    content.as_bytes(),
+                    file_path,
+                    true,
+                ));
+            }
         }
         comments
     }
@@ -69,9 +78,13 @@ fn runtime_for(spec: LanguageSpec) -> Option<Arc<Runtime>> {
 
     let language = tree_sitter_language_pack::get_language(spec.name).ok()?;
     let comment_query = Query::new(&language, spec.comment_query).ok()?;
+    let docstring_query = spec
+        .docstring_query
+        .and_then(|source| Query::new(&language, source).ok());
     let runtime = Arc::new(Runtime {
         language,
         comment_query,
+        docstring_query,
     });
     runtimes.insert(spec.name, Arc::clone(&runtime));
     Some(runtime)
@@ -145,9 +158,6 @@ fn determine_comment_type(text: &str, node_kind: &str) -> CommentType {
     if node_kind == "block_comment" || node_kind == "multiline_comment" {
         return CommentType::Block;
     }
-    if stripped.starts_with(r#"""""#) || stripped.starts_with("'''") {
-        return CommentType::Docstring;
-    }
     if stripped.starts_with("//") || stripped.starts_with('#') {
         return CommentType::Line;
     }
@@ -155,46 +165,4 @@ fn determine_comment_type(text: &str, node_kind: &str) -> CommentType {
         return CommentType::Block;
     }
     CommentType::Line
-}
-
-fn detect_docstrings(
-    language_name: &str,
-    content: &str,
-    file_path: &str,
-    comments: &[CommentInfo],
-) -> Vec<CommentInfo> {
-    match language_name {
-        "python" => detect_python_docstrings(content, file_path),
-        "javascript" | "typescript" | "tsx" | "java" => comments
-            .iter()
-            .filter(|comment| comment.text.trim_start().starts_with("/**"))
-            .map(|comment| {
-                CommentInfo::new(
-                    comment.text.clone(),
-                    comment.line_number,
-                    file_path,
-                    CommentType::Docstring,
-                    true,
-                )
-            })
-            .collect(),
-        _ => Vec::new(),
-    }
-}
-
-fn detect_python_docstrings(content: &str, file_path: &str) -> Vec<CommentInfo> {
-    let mut docstrings = Vec::new();
-    for (index, line) in content.lines().enumerate() {
-        let trimmed = line.trim_start();
-        if trimmed.starts_with(r#"""""#) || trimmed.starts_with("'''") {
-            docstrings.push(CommentInfo::new(
-                trimmed,
-                index + 1,
-                file_path,
-                CommentType::Docstring,
-                true,
-            ));
-        }
-    }
-    docstrings
 }

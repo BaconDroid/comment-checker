@@ -209,9 +209,9 @@ fn strip_prefix_ignore_ascii_case<'a>(text: &'a str, prefix: &str) -> Option<&'a
 }
 
 fn starts_with_ignore_ascii_case(text: &str, prefix: &str) -> bool {
-    let text = text.as_bytes();
-    let prefix = prefix.as_bytes();
-    text.len() >= prefix.len() && text[..prefix.len()].eq_ignore_ascii_case(prefix)
+    text.as_bytes()
+        .get(..prefix.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(prefix.as_bytes()))
 }
 
 #[must_use]

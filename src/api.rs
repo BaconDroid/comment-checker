@@ -207,6 +207,9 @@ fn result_json(result: &HookCheckResult) -> String {
 }
 
 fn fallback_json(error: &str) -> String {
-    let escaped = error.replace('\\', "\\\\").replace('"', "\\\"");
-    format!("{{\"exitCode\":1,\"message\":\"serialization failed: {escaped}\"}}")
+    serde_json::json!({
+        "exitCode": 1,
+        "message": format!("serialization failed: {error}"),
+    })
+    .to_string()
 }

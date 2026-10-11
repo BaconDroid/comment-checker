@@ -14,9 +14,5 @@ pub fn read_string(content: &str) -> String {
 }
 
 fn latin1_to_string(bytes: &[u8]) -> String {
-    let mut output = String::with_capacity(bytes.len());
-    for byte in bytes {
-        output.push(char::from(*byte));
-    }
-    output
+    bytes.iter().map(|&byte| char::from(byte)).collect()
 }
