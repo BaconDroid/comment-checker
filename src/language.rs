@@ -7,72 +7,12 @@ pub struct LanguageSpec {
 
 #[must_use]
 pub fn language_for_path(file_path: &str) -> Option<LanguageSpec> {
-    let ext = extension_or_basename(file_path)?;
-    language_for_extension(ext)
-}
-
-#[must_use]
-pub fn language_for_extension(extension: &str) -> Option<LanguageSpec> {
-    let ext = extension.trim_start_matches('.');
-    let name = language_name_for_alias(ext).or_else(|| {
-        ext.bytes()
-            .any(|byte| byte.is_ascii_uppercase())
-            .then(|| language_name_for_alias(&ext.to_ascii_lowercase()))
-            .flatten()
-    })?;
+    let name = tree_sitter_language_pack::detect_language(file_path)?;
     Some(LanguageSpec {
         name,
         comment_query: comment_query(name),
         docstring_query: docstring_query(name),
     })
-}
-
-fn language_name_for_alias(extension: &str) -> Option<&'static str> {
-    match extension {
-        "py" => "python",
-        "js" | "jsx" => "javascript",
-        "ts" => "typescript",
-        "tsx" => "tsx",
-        "go" => "go",
-        "java" => "java",
-        "kt" => "kotlin",
-        "scala" => "scala",
-        "c" | "h" => "c",
-        "cpp" | "cc" | "cxx" | "hpp" => "cpp",
-        "rs" => "rust",
-        "rb" => "ruby",
-        "sh" | "bash" => "bash",
-        "cs" => "csharp",
-        "swift" => "swift",
-        "ex" | "exs" => "elixir",
-        "lua" => "lua",
-        "php" => "php",
-        "ml" | "mli" => "ocaml",
-        "sql" => "sql",
-        "html" | "htm" => "html",
-        "css" => "css",
-        "yaml" | "yml" => "yaml",
-        "toml" => "toml",
-        "hcl" | "tf" => "hcl",
-        "dockerfile" => "dockerfile",
-        "proto" => "proto",
-        "svelte" => "svelte",
-        "elm" => "elm",
-        "groovy" => "groovy",
-        "cue" => "cue",
-        _ => return None,
-    }
-    .into()
-}
-
-fn extension_or_basename(file_path: &str) -> Option<&str> {
-    let name = file_path.rsplit('/').next().unwrap_or(file_path);
-    if let Some((_, ext)) = name.rsplit_once('.') {
-        if !ext.is_empty() {
-            return Some(ext);
-        }
-    }
-    (!name.is_empty()).then_some(name)
 }
 
 fn comment_query(name: &str) -> &'static str {
@@ -110,77 +50,31 @@ fn docstring_query(name: &str) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{language_for_extension, language_for_path};
+    use super::language_for_path;
 
     #[test]
-    fn language_for_path_supports_dockerfile_basename() {
+    fn language_for_path_given_known_extension_returns_spec_with_comment_query() {
         // given
-        let file_path = "Dockerfile";
-
-        // when
-        let language = language_for_path(file_path);
+        let spec = language_for_path("main.py");
 
         // then
-        assert_eq!(language.map(|spec| spec.name), Some("dockerfile"));
+        assert_eq!(spec.map(|spec| spec.name), Some("python"));
+        assert!(spec.is_some_and(|spec| !spec.comment_query.is_empty()));
     }
 
     #[test]
-    fn language_for_extension_supports_all_go_aliases() {
-        // given
-        let aliases = [
-            "py",
-            "js",
-            "jsx",
-            "ts",
-            "tsx",
-            "go",
-            "java",
-            "kt",
-            "scala",
-            "c",
-            "h",
-            "cpp",
-            "cc",
-            "cxx",
-            "hpp",
-            "rs",
-            "rb",
-            "sh",
-            "bash",
-            "cs",
-            "swift",
-            "ex",
-            "exs",
-            "lua",
-            "php",
-            "ml",
-            "mli",
-            "sql",
-            "html",
-            "htm",
-            "css",
-            "yaml",
-            "yml",
-            "toml",
-            "hcl",
-            "tf",
-            "dockerfile",
-            "proto",
-            "svelte",
-            "elm",
-            "groovy",
-            "cue",
-        ];
-
-        // when
-        let missing: Vec<&str> = aliases
-            .iter()
-            .copied()
-            .filter(|alias| language_for_extension(alias).is_none())
-            .collect();
-
+    fn language_for_path_given_unknown_extension_returns_none() {
         // then
-        assert!(missing.is_empty(), "missing aliases: {missing:?}");
+        assert!(language_for_path("main.xyz").is_none());
+    }
+
+    #[test]
+    fn language_for_path_given_known_extensionless_path_still_resolves() {
+        // then
+        assert_eq!(
+            language_for_path("Dockerfile").map(|spec| spec.name),
+            Some("dockerfile")
+        );
     }
 
     #[test]
@@ -188,66 +82,44 @@ mod tests {
         miri,
         ignore = "tree-sitter language pack calls generated C parser FFI"
     )]
-    fn language_for_extension_given_supported_aliases_loads_tree_sitter_languages() {
+    fn language_for_path_given_supported_paths_loads_tree_sitter_languages() {
         // given
-        let aliases = [
-            "py",
-            "js",
-            "jsx",
-            "ts",
-            "tsx",
-            "go",
-            "java",
-            "kt",
-            "scala",
-            "c",
-            "h",
-            "cpp",
-            "cc",
-            "cxx",
-            "hpp",
-            "rs",
-            "rb",
-            "sh",
-            "bash",
-            "cs",
-            "swift",
-            "ex",
-            "exs",
-            "lua",
-            "php",
-            "ml",
-            "mli",
-            "sql",
-            "html",
-            "htm",
-            "css",
-            "yaml",
-            "yml",
-            "toml",
-            "hcl",
-            "tf",
-            "dockerfile",
-            "proto",
-            "svelte",
-            "elm",
-            "groovy",
-            "cue",
+        let paths = [
+            "main.py",
+            "main.go",
+            "main.ts",
+            "main.tsx",
+            "main.js",
+            "Main.java",
+            "main.c",
+            "main.cpp",
+            "main.rs",
+            "main.rb",
+            "script.sh",
+            "Main.kt",
+            "main.swift",
+            "main.cs",
+            "main.php",
+            "main.lua",
+            "main.sql",
+            "index.html",
+            "style.css",
+            "config.yaml",
+            "Cargo.toml",
+            "Main.scala",
         ];
 
         // when
-        let unloaded: Vec<&str> = aliases
+        let unloaded: Vec<&str> = paths
             .iter()
             .copied()
-            .filter(|alias| {
-                let Some(spec) = language_for_extension(alias) else {
-                    return true;
-                };
-                tree_sitter_language_pack::get_language(spec.name).is_err()
+            .filter(|path| {
+                language_for_path(path)
+                    .is_none_or(|spec| tree_sitter_language_pack::get_language(spec.name).is_err())
             })
             .collect();
 
         // then
-        assert!(unloaded.is_empty(), "unloaded languages: {unloaded:?}");
+        assert!(unloaded.is_empty(), "unloaded paths: {unloaded:?}");
     }
 }
