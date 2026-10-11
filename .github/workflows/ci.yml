@@ -41,3 +41,11 @@ jobs:
 
       - name: Test npm wrapper
         run: node --test npm/comment-checker/*.test.js
+
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parity drift check
+        run: python3 parity/check.py

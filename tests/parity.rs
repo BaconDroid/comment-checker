@@ -1,0 +1,145 @@
+//! Cross-repo hook-contract conformance suite. This file is byte-identical in `comment-checker`
+//! and `test-checker`, and runs the cases from the shared `parity/vectors.json`.
+
+use std::io::Write;
+use std::process::{Command, Output, Stdio};
+
+type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+struct Vectors {
+    prefix: String,
+    placeholder: String,
+    element_open: String,
+    clean: String,
+    trigger: String,
+}
+
+fn vectors() -> Result<Vectors, Box<dyn std::error::Error>> {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/parity/vectors.json");
+    let raw = std::fs::read_to_string(path)?;
+    let json: serde_json::Value = serde_json::from_str(&raw)?;
+    let section = json
+        .get(env!("CARGO_PKG_NAME"))
+        .ok_or("missing vectors section for this crate")?;
+    let field = |key: &str| -> Result<String, Box<dyn std::error::Error>> {
+        Ok(section
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .ok_or("missing vector field")?
+            .to_string())
+    };
+    Ok(Vectors {
+        prefix: field("prefix")?,
+        placeholder: field("placeholder")?,
+        element_open: field("element_open")?,
+        clean: field("clean")?,
+        trigger: field("trigger")?,
+    })
+}
+
+fn run(input: &str, args: &[&str]) -> Result<Output, Box<dyn std::error::Error>> {
+    let binary = std::env::var(format!("CARGO_BIN_EXE_{}", env!("CARGO_PKG_NAME")))?;
+    let mut child = Command::new(binary)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    child
+        .stdin
+        .as_mut()
+        .ok_or("stdin handle unavailable")?
+        .write_all(input.as_bytes())?;
+    Ok(child.wait_with_output()?)
+}
+
+fn stderr(output: &Output) -> String {
+    String::from_utf8_lossy(&output.stderr).to_string()
+}
+
+#[test]
+fn clean_input_exits_zero_with_a_prefixed_success() -> TestResult {
+    let v = vectors()?;
+    let output = run(&v.clean, &[])?;
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        stderr(&output).contains(&format!("{} Success", v.prefix)),
+        "stderr: {}",
+        stderr(&output)
+    );
+    Ok(())
+}
+
+#[test]
+fn triggering_input_exits_two_with_xml() -> TestResult {
+    let v = vectors()?;
+    let output = run(&v.trigger, &[])?;
+    let text = stderr(&output);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(text.contains(&v.element_open), "stderr: {text}");
+    Ok(())
+}
+
+#[test]
+fn custom_prompt_without_placeholder_is_exact() -> TestResult {
+    let v = vectors()?;
+    let output = run(&v.trigger, &["--prompt", "CUSTOM"])?;
+
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(stderr(&output), "CUSTOM");
+    Ok(())
+}
+
+#[test]
+fn custom_prompt_with_placeholder_embeds_the_xml() -> TestResult {
+    let v = vectors()?;
+    let prompt = format!("PRE {} POST", v.placeholder);
+    let output = run(&v.trigger, &["--prompt", &prompt])?;
+    let text = stderr(&output);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        text.contains("PRE") && text.contains(&v.element_open) && text.contains("POST"),
+        "stderr: {text}"
+    );
+    Ok(())
+}
+
+#[test]
+fn empty_stdin_fails_open_to_exit_zero() -> TestResult {
+    let v = vectors()?;
+    let output = run("", &[])?;
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        stderr(&output).contains(&format!("{} Skipping:", v.prefix)),
+        "stderr: {}",
+        stderr(&output)
+    );
+    Ok(())
+}
+
+#[test]
+fn invalid_json_fails_open_to_exit_zero() -> TestResult {
+    let output = run("not json", &[])?;
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(stderr(&output).contains("Invalid input format"));
+    Ok(())
+}
+
+#[test]
+fn unknown_positional_arguments_are_ignored() -> TestResult {
+    let v = vectors()?;
+    let output = run(&v.clean, &["some", "unexpected", "args"])?;
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        stderr(&output).contains(&format!("{} Success", v.prefix)),
+        "stderr: {}",
+        stderr(&output)
+    );
+    Ok(())
+}
