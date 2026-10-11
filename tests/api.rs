@@ -52,3 +52,15 @@ fn detect_comments_json_given_python_comment_returns_comment_payload() -> serde_
     );
     Ok(())
 }
+
+#[test]
+fn check_hook_input_given_camel_case_keys_and_null_fields_parses() {
+    // given
+    let input = r##"{"toolName":"Write","toolInput":{"filePath":"test.py","content":"# comment\nprint(1)","edits":null}}"##;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+}

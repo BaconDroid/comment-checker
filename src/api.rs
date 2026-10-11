@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::detector::CommentDetector;
 use crate::filters::apply_filters;
@@ -36,32 +36,40 @@ impl HookCheckResult {
 
 #[derive(Debug, Default, Deserialize)]
 struct ToolInput {
-    #[serde(default)]
+    #[serde(default, alias = "filePath", deserialize_with = "null_default")]
     file_path: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     content: String,
-    #[serde(default)]
+    #[serde(default, alias = "newString", deserialize_with = "null_default")]
     new_string: String,
-    #[serde(default)]
+    #[serde(default, alias = "oldString", deserialize_with = "null_default")]
     old_string: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     edits: Vec<EditInput>,
 }
 
 #[derive(Debug, Default, Deserialize)]
 struct EditInput {
-    #[serde(default)]
+    #[serde(default, alias = "oldString", deserialize_with = "null_default")]
     old_string: String,
-    #[serde(default)]
+    #[serde(default, alias = "newString", deserialize_with = "null_default")]
     new_string: String,
 }
 
 #[derive(Debug, Deserialize)]
 struct HookInput {
-    #[serde(default)]
+    #[serde(default, alias = "toolName", deserialize_with = "null_default")]
     tool_name: String,
-    #[serde(default)]
+    #[serde(default, alias = "toolInput", deserialize_with = "null_default")]
     tool_input: ToolInput,
+}
+
+fn null_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Default + Deserialize<'de>,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
 }
 
 #[must_use]
