@@ -297,5 +297,5 @@ fn apply_filters_given_allowed_comments_returns_empty() {
     let result = apply_filters(&comments);
 
     // then
-    assert!(result.is_empty());
+    assert_eq!(result.len(), 0);
 }

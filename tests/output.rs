@@ -33,6 +33,21 @@ fn build_comments_xml_given_empty_comments_returns_empty_string() {
 }
 
 #[test]
+fn build_comments_xml_given_special_characters_escapes_them() {
+    // given
+    let comments = vec![comment("// if (a < b && c > d)", 1, "src/app.py")];
+
+    // when
+    let result = build_comments_xml(&comments, "src/app.py");
+
+    // then
+    assert_eq!(
+        result,
+        "<comments file=\"src/app.py\">\n\t<comment line-number=\"1\">// if (a &lt; b &amp;&amp; c &gt; d)</comment>\n</comments>",
+    );
+}
+
+#[test]
 fn format_hook_message_given_single_comment_contains_default_warning() {
     // given
     let comments = vec![comment("# TODO: fix this", 10, "src/app.py")];

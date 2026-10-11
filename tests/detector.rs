@@ -62,8 +62,8 @@ fn detect_given_unsupported_extension_returns_empty_list() {
     let comments = detector.detect(code, "test.xyz", false);
 
     // then: the same comment-bearing bytes yield comments for a supported extension, none for an unsupported one
-    assert!(!supported.is_empty());
-    assert!(comments.is_empty());
+    assert_eq!(supported.len(), 1);
+    assert_eq!(comments.len(), 0);
 }
 
 #[test]

@@ -12,7 +12,7 @@ fn full_pipeline_given_no_comments_returns_empty() {
     let comments = detector.detect(code, "main.go", false);
 
     // then
-    assert!(comments.is_empty());
+    assert_eq!(comments.len(), 0);
 }
 
 #[test]
@@ -26,8 +26,8 @@ fn full_pipeline_given_bdd_comment_filters_out() {
     let filtered = apply_filters(&comments);
 
     // then
-    assert!(!comments.is_empty());
-    assert!(filtered.is_empty());
+    assert_eq!(comments.len(), 1);
+    assert_eq!(filtered.len(), 0);
 }
 
 #[test]
@@ -59,8 +59,8 @@ fn full_pipeline_given_docstring_keeps_as_code_smell() {
     let filtered = apply_filters(&comments);
 
     // then
-    assert!(!comments.is_empty());
-    assert!(!filtered.is_empty());
+    assert_eq!(comments.len(), 1);
+    assert_eq!(filtered.len(), 1);
 }
 
 #[test]
@@ -74,8 +74,8 @@ fn full_pipeline_given_directive_filters_out() {
     let filtered = apply_filters(&comments);
 
     // then
-    assert!(!comments.is_empty());
-    assert!(filtered.is_empty());
+    assert_eq!(comments.len(), 1);
+    assert_eq!(filtered.len(), 0);
 }
 
 #[test]
@@ -89,8 +89,8 @@ fn full_pipeline_given_shebang_filters_out() {
     let filtered = apply_filters(&comments);
 
     // then
-    assert!(!comments.is_empty());
-    assert!(filtered.is_empty());
+    assert_eq!(comments.len(), 1);
+    assert_eq!(filtered.len(), 0);
 }
 
 #[test]

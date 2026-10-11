@@ -174,8 +174,6 @@ pub fn detect_comments_json(content: &str, file_path: &str, include_docstrings: 
 fn get_content_to_check(input: &HookInput) -> &str {
     match input.tool_name.as_str() {
         "Write" => input.tool_input.content.as_str(),
-        "Edit" => input.tool_input.new_string.as_str(),
-        "MultiEdit" => "",
         _ if !input.tool_input.content.is_empty() => input.tool_input.content.as_str(),
         _ => input.tool_input.new_string.as_str(),
     }
