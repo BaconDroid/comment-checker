@@ -42,15 +42,24 @@ fn read_file_given_missing_file_returns_empty_string() {
 #[test]
 fn read_file_given_latin1_file_falls_back_to_latin1() -> std::io::Result<()> {
     // given
-    let path =
-        std::env::temp_dir().join(format!("comment-checker-latin1-{}.py", std::process::id()));
+    let dir = unique_temp_dir();
+    fs::create_dir_all(&dir)?;
+    let path = dir.join("latin1.py");
     fs::write(&path, [0x63, 0x61, 0x66, 0xe9])?;
 
     // when
     let result = read_file(&path);
 
     // then
-    let _cleanup = fs::remove_file(&path);
+    let _cleanup = fs::remove_dir_all(&dir);
     assert_eq!(result, "cafe\u{301}".replace("e\u{301}", "é"));
     Ok(())
+}
+
+fn unique_temp_dir() -> std::path::PathBuf {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    std::env::temp_dir().join(format!("comment-checker-{}-{nanos}", std::process::id()))
 }

@@ -8,6 +8,7 @@ use std::time::Instant;
 
 const WARMUP_ITERATIONS: u32 = 100;
 const MEASURED_ITERATIONS: u32 = 1_000;
+const SAMPLES: usize = 5;
 
 const PYTHON_SOURCE: &str = "\"\"\"Module docstring.\"\"\"\n\n# regular comment\ndef add(a, b):\n    \"\"\"Function docstring.\"\"\"\n    return a + b\n";
 
@@ -15,14 +16,18 @@ fn measure(name: &str, run: &mut impl FnMut()) {
     for _ in 0..WARMUP_ITERATIONS {
         run();
     }
-    let start = Instant::now();
-    for _ in 0..MEASURED_ITERATIONS {
-        run();
+    let mut samples = Vec::with_capacity(SAMPLES);
+    for _ in 0..SAMPLES {
+        let start = Instant::now();
+        for _ in 0..MEASURED_ITERATIONS {
+            run();
+        }
+        samples.push(start.elapsed() / MEASURED_ITERATIONS);
     }
-    println!(
-        "{name}: {:?} per iteration",
-        start.elapsed() / MEASURED_ITERATIONS
-    );
+    samples.sort_unstable();
+    let best = samples.first().copied().unwrap_or_default();
+    let median = samples.get(samples.len() / 2).copied().unwrap_or_default();
+    println!("{name}: best {best:?}/iter, median {median:?}/iter");
 }
 
 fn main() {

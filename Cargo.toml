@@ -9,10 +9,6 @@ repository = "https://github.com/code-yeongyu/go-claude-code-comment-checker"
 keywords = ["comments", "tree-sitter", "claude-code", "opencode", "hook"]
 categories = ["command-line-utilities", "development-tools"]
 
-[workspace]
-members = ["."]
-resolver = "3"
-
 [[bin]]
 name = "comment-checker"
 path = "src/main.rs"
@@ -22,9 +18,6 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 tree-sitter = "0.26.8"
 tree-sitter-language-pack = { version = "1.8.1", default-features = false }
-
-[features]
-default = []
 
 [[bench]]
 name = "comment_checker"
