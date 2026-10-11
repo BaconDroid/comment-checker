@@ -1,11 +1,15 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ops::ControlFlow;
 use std::sync::{Arc, LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
-use tree_sitter::{Parser, Query, QueryCursor, StreamingIterator};
+use tree_sitter::{ParseOptions, ParseState, Parser, Query, QueryCursor, StreamingIterator};
 
 use crate::language::{LanguageSpec, language_for_path};
 use crate::models::{CommentInfo, CommentType};
+
+const PARSE_TIME_BUDGET: Duration = Duration::from_millis(50);
 
 struct Runtime {
     language: tree_sitter::Language,
@@ -42,23 +46,19 @@ impl CommentDetector {
         let Some(runtime) = runtime_for(spec) else {
             return Vec::new();
         };
-        let Some(tree) = parse_with_runtime(&runtime, spec.name, content.as_bytes()) else {
+        let source = content.as_bytes();
+        let Some(tree) = parse_with_runtime(&runtime, spec.name, source) else {
             return Vec::new();
         };
 
-        let mut comments = captures_to_comments(
-            &runtime.comment_query,
-            &tree,
-            content.as_bytes(),
-            file_path,
-            false,
-        );
-        if include_docstrings {
+        let mut comments =
+            captures_to_comments(&runtime.comment_query, &tree, source, file_path, false);
+        if include_docstrings && !tree.root_node().has_error() {
             if let Some(docstring_query) = &runtime.docstring_query {
                 comments.extend(captures_to_comments(
                     docstring_query,
                     &tree,
-                    content.as_bytes(),
+                    source,
                     file_path,
                     true,
                 ));
@@ -98,17 +98,38 @@ fn parse_with_runtime(
     PARSERS.with(|parsers| {
         let mut parsers = parsers.borrow_mut();
         if let Some(parser) = parsers.get_mut(language_name) {
-            parser.parse(source, None)
+            parse_with_budget(parser, source)
         } else {
             let mut parser = Parser::new();
             if parser.set_language(&runtime.language).is_err() {
                 return None;
             }
-            let tree = parser.parse(source, None);
+            let tree = parse_with_budget(&mut parser, source);
             parsers.insert(language_name, parser);
             tree
         }
     })
+}
+
+fn parse_with_budget(parser: &mut Parser, source: &[u8]) -> Option<tree_sitter::Tree> {
+    let start = Instant::now();
+    let mut progress = |_state: &ParseState| {
+        if start.elapsed() > PARSE_TIME_BUDGET {
+            ControlFlow::Break(())
+        } else {
+            ControlFlow::Continue(())
+        }
+    };
+    let options = ParseOptions::new().progress_callback(&mut progress);
+    let len = source.len();
+    let mut read = |offset: usize, _: tree_sitter::Point| {
+        if offset < len {
+            &source[offset..]
+        } else {
+            Default::default()
+        }
+    };
+    parser.parse_with_options(&mut read, None, Some(options))
 }
 
 fn captures_to_comments(
@@ -119,6 +140,7 @@ fn captures_to_comments(
     force_docstring: bool,
 ) -> Vec<CommentInfo> {
     let mut cursor = QueryCursor::new();
+    cursor.set_byte_range(0..source.len());
     let mut captures = cursor.captures(query, tree.root_node(), source);
     let mut comments = Vec::new();
     captures.advance();
@@ -137,13 +159,12 @@ fn captures_to_comments(
         } else {
             determine_comment_type(text, node.kind())
         };
-        let is_docstring = comment_type == CommentType::Docstring;
         comments.push(CommentInfo::new(
             text,
             node.start_position().row + 1,
             file_path,
             comment_type,
-            is_docstring,
+            force_docstring,
         ));
         captures.advance();
     }

@@ -78,10 +78,24 @@ pub fn check_hook_input(input: &str, custom_prompt: &str) -> HookCheckResult {
         return skip("No input provided");
     }
 
-    let Ok(hook_input) = serde_json::from_str::<HookInput>(input) else {
-        return skip("Invalid input format");
-    };
+    serde_json::from_str::<HookInput>(input).map_or_else(
+        |_| skip("Invalid input format"),
+        |hook_input| evaluate(&hook_input, custom_prompt),
+    )
+}
 
+#[must_use]
+pub fn check_hook_input_from_reader<R: std::io::Read>(
+    reader: R,
+    custom_prompt: &str,
+) -> HookCheckResult {
+    serde_json::from_reader::<R, HookInput>(reader).map_or_else(
+        |_| skip("Invalid input format"),
+        |hook_input| evaluate(&hook_input, custom_prompt),
+    )
+}
+
+fn evaluate(hook_input: &HookInput, custom_prompt: &str) -> HookCheckResult {
     let file_path = hook_input.tool_input.file_path.as_str();
     if file_path.is_empty() {
         return skip("No file path provided");
@@ -122,7 +136,7 @@ pub fn check_hook_input(input: &str, custom_prompt: &str) -> HookCheckResult {
             comments
         }
         _ => {
-            let content = get_content_to_check(&hook_input);
+            let content = get_content_to_check(hook_input);
             if content.is_empty() {
                 return skip("No content to check");
             }

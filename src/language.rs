@@ -114,12 +114,15 @@ mod tests {
             .iter()
             .copied()
             .filter(|path| {
-                language_for_path(path)
-                    .is_none_or(|spec| tree_sitter_language_pack::get_language(spec.name).is_err())
+                language_for_path(path).is_none_or(|spec| {
+                    !tree_sitter_language_pack::has_language(spec.name)
+                        || tree_sitter_language_pack::get_language(spec.name).is_err()
+                })
             })
             .collect();
 
         // then
+        assert!(tree_sitter_language_pack::language_count() > 0);
         assert!(unloaded.is_empty(), "unloaded paths: {unloaded:?}");
     }
 }

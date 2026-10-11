@@ -18,6 +18,7 @@ pub struct CommentInfo {
     pub file_path: String,
     pub comment_type: CommentType,
     pub is_docstring: bool,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub metadata: BTreeMap<String, String>,
 }
 
