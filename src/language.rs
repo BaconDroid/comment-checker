@@ -17,13 +17,6 @@ pub(crate) fn docstring_prefix(name: &str) -> Option<&'static str> {
 
 pub(crate) fn docstring_query(name: &str) -> Option<&'static str> {
     match name {
-        "python" => Some(
-            r"
-		(module . (string) @docstring)
-		(class_definition body: (block . (string) @docstring))
-		(function_definition body: (block . (string) @docstring))
-	",
-        ),
         "javascript" | "typescript" | "tsx" => Some(
             r"
 		(comment) @jsdoc

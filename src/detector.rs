@@ -53,7 +53,7 @@ impl CommentDetector {
             return Vec::new();
         };
 
-        let mut comments = extract(&runtime, &tree, source, file_path, 0, include_docstrings);
+        let mut comments = extract(&runtime, &tree, content, file_path, 0, include_docstrings);
         collect_injected_comments(
             &runtime,
             &tree,
@@ -132,11 +132,12 @@ fn parse_with_budget(parser: &mut Parser, source: &[u8]) -> Option<tree_sitter::
 fn extract(
     runtime: &Runtime,
     tree: &tree_sitter::Tree,
-    source: &[u8],
+    content: &str,
     file_path: &str,
     row_offset: usize,
     include_docstrings: bool,
 ) -> Vec<CommentInfo> {
+    let source = content.as_bytes();
     let mut comments = captures_to_comments(
         &runtime.comment_query,
         tree,
@@ -145,16 +146,20 @@ fn extract(
         false,
         row_offset,
     );
-    if include_docstrings && !tree.root_node().has_error() {
+    if include_docstrings {
         if let Some(docstring_query) = &runtime.docstring_query {
-            comments.extend(docstrings_from_query(
-                docstring_query,
-                tree,
-                source,
-                file_path,
-                &runtime.name,
-                row_offset,
-            ));
+            if !tree.root_node().has_error() {
+                comments.extend(docstrings_from_query(
+                    docstring_query,
+                    tree,
+                    source,
+                    file_path,
+                    &runtime.name,
+                    row_offset,
+                ));
+            }
+        } else if runtime.name == "python" {
+            comments.extend(python_docstrings(content, file_path, row_offset));
         }
     }
     comments
@@ -174,7 +179,7 @@ fn detects_injected(
     extract(
         runtime,
         &tree,
-        source,
+        content,
         file_path,
         row_offset,
         include_docstrings,
@@ -234,6 +239,25 @@ fn docstrings_from_query(
         docstrings.retain(|comment| comment.text.trim_start().starts_with(prefix));
     }
     docstrings
+}
+
+fn python_docstrings(content: &str, file_path: &str, row_offset: usize) -> Vec<CommentInfo> {
+    content
+        .lines()
+        .enumerate()
+        .filter_map(|(index, line)| {
+            let trimmed = line.trim_start();
+            (trimmed.starts_with("\"\"\"") || trimmed.starts_with("'''")).then(|| {
+                CommentInfo::new(
+                    trimmed,
+                    index + 1 + row_offset,
+                    file_path,
+                    CommentType::Docstring,
+                    true,
+                )
+            })
+        })
+        .collect()
 }
 
 fn collect_injected_comments(
