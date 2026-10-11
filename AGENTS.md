@@ -12,6 +12,17 @@ The Rust crate at the repository root (`src/`, `tests/`, `benches/`, `npm/`) is 
 ## Release platform touchpoints
 Each supported platform (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `win32-x64`) is named in six places — keep them in sync: `npm/comment-checker/index.js` `SUPPORTED_PLATFORMS`, `npm/comment-checker/postinstall.js` `PLATFORM_MAP`, `npm/comment-checker/package.json` `optionalDependencies`, `.github/scripts/prepare-npm-packages.sh`, `.github/scripts/verify-npm-packages.sh`, and the `.github/workflows/release.yml` build matrix. `packages.test.js` ties the first three together.
 
+## Dependency convention
+Direct dependencies are exactly `serde` (data model + serialization), `serde_json` (wire I/O only), `tree-sitter` (parsing and matching, via queries), and `tree-sitter-language-pack` (language, grammar, and identification only). Do not add dynamic `serde_json::Value` modeling, `TreeCursor` comment walks, or the pack's `get_parser`/`process`/runtime download; comments and docstrings are collected with `tree-sitter` queries. Keep direct dependencies to this set unless a change is justified and convention-following.
+
+## Upstream
+This fork is **not** merged or synced from upstream [`code-yeongyu/go-claude-code-comment-checker`](https://github.com/code-yeongyu/go-claude-code-comment-checker); the two have diverged (the archived `go/` tree and the `clap`/`itoa`/`criterion`/`tempfile` and N-API/wasm binding stacks are gone, and the detector is a query-based rewrite). Review upstream by hand and port only convention-following, non-superseded changes:
+
+```bash
+git remote add upstream https://github.com/code-yeongyu/go-claude-code-comment-checker.git
+git fetch upstream && git log --oneline master..upstream/master
+```
+
 ## Test authoring gate
 Before adding or changing a test, answer all four; a missing answer means do not add it yet:
 1. What observable behavior, invariant, or independent contract does it protect?
