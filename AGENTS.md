@@ -2,6 +2,8 @@
 
 The Rust crate at the repository root (`src/`, `tests/`, `benches/`, `bindings/`, `npm/`) is the current implementation.
 
+This fork deliberately diverges from upstream (`code-yeongyu/go-claude-code-comment-checker`): the archived `go/` engine was removed and must not be restored, and upstream `master` is not synced or merged here.
+
 ## Commands (the same ones CI runs, `.github/workflows/ci.yml`)
 - Format: `cargo fmt --all -- --check`
 - Lint: `cargo clippy -p comment-checker --all-targets --all-features -- -D warnings`, plus the napi and wasm clippy steps in `ci.yml`

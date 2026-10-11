@@ -144,6 +144,14 @@ use `{{comments}}` placeholder to insert the detected comments XML. if omitted, 
 
 write self-documenting code. use meaningful names. extract functions. stop explaining what the code does and make the code explain itself.
 
+## fork
+
+This is a fork of
+[code-yeongyu/go-claude-code-comment-checker](https://github.com/code-yeongyu/go-claude-code-comment-checker)
+that deliberately diverges from upstream: the archived `go/` implementation has
+been removed and is not restored. Upstream `master` is not synced into this
+fork; do not merge it in.
+
 ## license
 
 MIT. do whatever.
