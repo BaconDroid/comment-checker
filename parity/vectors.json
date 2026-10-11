@@ -1,0 +1,16 @@
+{
+  "comment-checker": {
+    "prefix": "[check-comments]",
+    "placeholder": "{{comments}}",
+    "element_open": "<comments",
+    "clean": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"a.py\",\"content\":\"print(1)\"}}",
+    "trigger": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"a.py\",\"content\":\"# comment\\nprint(1)\"}}"
+  },
+  "test-checker": {
+    "prefix": "[test-checker]",
+    "placeholder": "{{findings}}",
+    "element_open": "<findings",
+    "clean": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"tests/a_test.py\",\"content\":\"def test_a():\\n    assert x == 1\\n\"}}",
+    "trigger": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"tests/a_test.py\",\"content\":\"def test_a():\\n    @pytest.mark.skip\\n    assert x == 1\\n\"}}"
+  }
+}

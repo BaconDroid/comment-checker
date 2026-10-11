@@ -35,3 +35,9 @@ Junk patterns (reject unless the retention bar below applies): assertion-free pr
 Retention bar: keep a pattern match only when it independently guards a public API, protocol, config, migration, storage, security, platform, default, prompt-byte, generated or cross-language, package, release, or architecture contract, and say which one in the test. Static or slow is never a deletion reason. A retained test that fails on the base is a product bug to fix at its owner, never a test to delete.
 A bug regression test must fail on the pre-fix code for the intended reason; an existing owner test that already fails may serve as that proof.
 Method source: openclaw test-audit skill.
+
+## Parity harness
+`parity/` is shared byte-for-byte with `BaconDroid/test-checker`: `check.py` is the cross-repo drift
+check, `vectors.json` is the shared hook-contract corpus, and `tests/parity.rs` runs it. CI runs
+`python3 parity/check.py` (the `parity` job). When a shared file changes, change the sibling in the
+same wave.
