@@ -9,6 +9,9 @@ The Rust crate at the repository root (`src/`, `tests/`, `benches/`, `npm/`) is 
 - Focused test: `cargo test -p comment-checker --test <name>`, where `<name>` is one of the files in `tests/*.rs`
 - npm wrapper: `node --test npm/comment-checker/*.test.js`
 
+## Release platform touchpoints
+Each supported platform (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `win32-x64`) is named in six places — keep them in sync: `npm/comment-checker/index.js` `SUPPORTED_PLATFORMS`, `npm/comment-checker/postinstall.js` `PLATFORM_MAP`, `npm/comment-checker/package.json` `optionalDependencies`, `.github/scripts/prepare-npm-packages.sh`, `.github/scripts/verify-npm-packages.sh`, and the `.github/workflows/release.yml` build matrix. `packages.test.js` ties the first three together.
+
 ## Test authoring gate
 Before adding or changing a test, answer all four; a missing answer means do not add it yet:
 1. What observable behavior, invariant, or independent contract does it protect?

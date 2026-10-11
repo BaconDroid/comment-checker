@@ -35,3 +35,14 @@ for (const key of SUPPORTED_PLATFORMS) {
     assert.equal(manifest.version, readManifest("comment-checker").version);
   });
 }
+
+test("postinstall platform map keys match the supported platforms", () => {
+  // given
+  const { PLATFORM_MAP } = require("./postinstall");
+
+  // when
+  const keys = Object.keys(PLATFORM_MAP);
+
+  // then
+  assert.deepEqual(keys, SUPPORTED_PLATFORMS);
+});
