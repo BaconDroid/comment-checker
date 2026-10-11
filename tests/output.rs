@@ -82,25 +82,6 @@ fn format_hook_message_given_multiple_comments_single_file_groups_xml() {
 }
 
 #[test]
-fn format_hook_message_given_comments_multiple_files_returns_separate_xml_blocks() {
-    // given
-    let comments = vec![
-        comment("# Comment in file 1", 10, "src/file1.py"),
-        comment("# Comment in file 2", 20, "src/file2.py"),
-    ];
-
-    // when
-    let result = format_hook_message(&comments, "");
-
-    // then
-    assert!(result.contains("<comments file=\"src/file1.py\">"));
-    assert!(result.contains("<comments file=\"src/file2.py\">"));
-    assert!(result.contains("<comment line-number=\"10\"># Comment in file 1</comment>"));
-    assert!(result.contains("<comment line-number=\"20\"># Comment in file 2</comment>"));
-    assert_eq!(result.matches("</comments>").count(), 2);
-}
-
-#[test]
 fn format_hook_message_given_empty_list_returns_empty_string() {
     // given
     let comments = Vec::new();

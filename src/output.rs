@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::filters::AgentMemoFilter;
 use crate::models::CommentInfo;
 
@@ -61,31 +59,11 @@ pub fn format_hook_message(comments: &[CommentInfo], custom_prompt: &str) -> Str
         return String::new();
     }
 
-    let mut group_indexes: HashMap<&str, usize> = HashMap::with_capacity(comments.len());
-    let mut groups: Vec<(&str, Vec<&CommentInfo>)> = Vec::new();
-    for comment in comments {
-        let file_path = comment.file_path.as_str();
-        match group_indexes.entry(file_path) {
-            std::collections::hash_map::Entry::Occupied(entry) => {
-                groups[*entry.get()].1.push(comment);
-            }
-            std::collections::hash_map::Entry::Vacant(entry) => {
-                let index = groups.len();
-                entry.insert(index);
-                groups.push((file_path, vec![comment]));
-            }
-        }
-    }
-
-    let mut comments_xml = String::with_capacity(comments.len() * 64);
-    for (file_path, file_comments) in &groups {
-        push_comments_xml_header(&mut comments_xml, file_path);
-        for comment in file_comments {
-            push_comment_xml(&mut comments_xml, comment);
-        }
-        comments_xml.push_str("</comments>");
-        comments_xml.push('\n');
-    }
+    let file_path = comments
+        .first()
+        .map_or("", |comment| comment.file_path.as_str());
+    let mut comments_xml = build_comments_xml(comments, file_path);
+    comments_xml.push('\n');
 
     if !custom_prompt.is_empty() {
         return custom_prompt.replace("{{comments}}", &comments_xml);

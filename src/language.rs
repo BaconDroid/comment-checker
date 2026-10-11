@@ -1,18 +1,6 @@
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct LanguageSpec {
-    pub name: &'static str,
-    pub comment_query: &'static str,
-    pub docstring_query: Option<&'static str>,
-}
-
 #[must_use]
-pub fn language_for_path(file_path: &str) -> Option<LanguageSpec> {
-    let name = tree_sitter_language_pack::detect_language(file_path)?;
-    Some(LanguageSpec {
-        name,
-        comment_query: comment_query(name),
-        docstring_query: docstring_query(name),
-    })
+pub fn language_for_path(file_path: &str) -> Option<&'static str> {
+    tree_sitter_language_pack::detect_language(file_path)
 }
 
 pub(crate) fn comment_query(name: &str) -> &'static str {
@@ -55,28 +43,21 @@ mod tests {
     use super::language_for_path;
 
     #[test]
-    fn language_for_path_given_known_extension_returns_spec_with_comment_query() {
-        // given
-        let spec = language_for_path("main.py");
-
+    fn language_for_path_given_known_extension_returns_name() {
         // then
-        assert_eq!(spec.map(|spec| spec.name), Some("python"));
-        assert!(spec.is_some_and(|spec| !spec.comment_query.is_empty()));
+        assert_eq!(language_for_path("main.py"), Some("python"));
     }
 
     #[test]
     fn language_for_path_given_unknown_extension_returns_none() {
         // then
-        assert!(language_for_path("main.xyz").is_none());
+        assert_eq!(language_for_path("main.xyz"), None);
     }
 
     #[test]
     fn language_for_path_given_known_extensionless_path_still_resolves() {
         // then
-        assert_eq!(
-            language_for_path("Dockerfile").map(|spec| spec.name),
-            Some("dockerfile")
-        );
+        assert_eq!(language_for_path("Dockerfile"), Some("dockerfile"));
     }
 
     #[test]
@@ -109,6 +90,15 @@ mod tests {
             "config.yaml",
             "Cargo.toml",
             "Main.scala",
+            "main.ex",
+            "Main.elm",
+            "build.groovy",
+            "config.hcl",
+            "main.ml",
+            "main.proto",
+            "App.svelte",
+            "config.cue",
+            "Dockerfile",
         ];
 
         // when
@@ -116,9 +106,9 @@ mod tests {
             .iter()
             .copied()
             .filter(|path| {
-                language_for_path(path).is_none_or(|spec| {
-                    !tree_sitter_language_pack::has_language(spec.name)
-                        || tree_sitter_language_pack::get_language(spec.name).is_err()
+                language_for_path(path).is_none_or(|name| {
+                    !tree_sitter_language_pack::has_language(name)
+                        || tree_sitter_language_pack::get_language(name).is_err()
                 })
             })
             .collect();

@@ -42,10 +42,10 @@ impl CommentDetector {
         file_path: &str,
         include_docstrings: bool,
     ) -> Vec<CommentInfo> {
-        let Some(spec) = language_for_path(file_path) else {
+        let Some(name) = language_for_path(file_path) else {
             return Vec::new();
         };
-        let Some(runtime) = runtime_by_name(spec.name) else {
+        let Some(runtime) = runtime_by_name(name) else {
             return Vec::new();
         };
         let source = content.as_bytes();
