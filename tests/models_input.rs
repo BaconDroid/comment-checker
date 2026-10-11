@@ -42,14 +42,15 @@ fn read_file_given_missing_file_returns_empty_string() {
 #[test]
 fn read_file_given_latin1_file_falls_back_to_latin1() -> std::io::Result<()> {
     // given
-    let dir = tempfile::tempdir()?;
-    let path = dir.path().join("latin1.py");
+    let path =
+        std::env::temp_dir().join(format!("comment-checker-latin1-{}.py", std::process::id()));
     fs::write(&path, [0x63, 0x61, 0x66, 0xe9])?;
 
     // when
     let result = read_file(&path);
 
     // then
+    let _cleanup = fs::remove_file(&path);
     assert_eq!(result, "cafe\u{301}".replace("e\u{301}", "é"));
     Ok(())
 }

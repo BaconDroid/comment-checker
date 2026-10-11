@@ -11,9 +11,8 @@ pub fn build_comments_xml(comments: &[CommentInfo], file_path: &str) -> String {
 
     let mut output = String::with_capacity(24 + file_path.len() + comments.len() * 48);
     push_comments_xml_header(&mut output, file_path);
-    let mut line_number = itoa::Buffer::new();
     for comment in comments {
-        push_comment_xml(&mut output, comment, &mut line_number);
+        push_comment_xml(&mut output, comment);
     }
     output.push_str("</comments>");
     output
@@ -25,9 +24,9 @@ fn push_comments_xml_header(output: &mut String, file_path: &str) {
     output.push_str("\">\n");
 }
 
-fn push_comment_xml(output: &mut String, comment: &CommentInfo, line_number: &mut itoa::Buffer) {
+fn push_comment_xml(output: &mut String, comment: &CommentInfo) {
     output.push_str("\t<comment line-number=\"");
-    output.push_str(line_number.format(comment.line_number));
+    output.push_str(&comment.line_number.to_string());
     output.push_str("\">");
     output.push_str(&comment.text);
     output.push_str("</comment>\n");
@@ -58,9 +57,8 @@ pub fn format_hook_message(comments: &[CommentInfo], custom_prompt: &str) -> Str
     let mut comments_xml = String::with_capacity(comments.len() * 64);
     for (file_path, file_comments) in &groups {
         push_comments_xml_header(&mut comments_xml, file_path);
-        let mut line_number = itoa::Buffer::new();
         for comment in file_comments {
-            push_comment_xml(&mut comments_xml, comment, &mut line_number);
+            push_comment_xml(&mut comments_xml, comment);
         }
         comments_xml.push_str("</comments>");
         comments_xml.push('\n');
@@ -109,10 +107,9 @@ pub fn format_hook_message(comments: &[CommentInfo], custom_prompt: &str) -> Str
         output.push_str("  -> Use meaningful variable/function names that explain intent\n");
         output.push_str("  -> Let git commit messages document the \"what\" and \"why\"\n\n");
         output.push_str("Detected agent memo comments:\n");
-        let mut line_number = itoa::Buffer::new();
         for memo in agent_memo_comments {
             output.push_str("  - Line ");
-            output.push_str(line_number.format(memo.line_number));
+            output.push_str(&memo.line_number.to_string());
             output.push_str(": ");
             output.push_str(memo.text.trim());
             output.push('\n');

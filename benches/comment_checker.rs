@@ -3,69 +3,72 @@ use comment_checker::detector::CommentDetector;
 use comment_checker::filters::AgentMemoFilter;
 use comment_checker::models::{CommentInfo, CommentType};
 use comment_checker::output::{build_comments_xml, format_hook_message};
-use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
+use std::time::Instant;
+
+const WARMUP_ITERATIONS: u32 = 100;
+const MEASURED_ITERATIONS: u32 = 1_000;
 
 const PYTHON_SOURCE: &str = "\"\"\"Module docstring.\"\"\"\n\n# regular comment\ndef add(a, b):\n    \"\"\"Function docstring.\"\"\"\n    return a + b\n";
 
-fn benchmark_detector(criterion: &mut Criterion) {
-    let detector = CommentDetector::new();
-    criterion.bench_function("detect_python_no_docstrings", |bencher| {
-        bencher.iter(|| {
-            let comments = detector.detect(black_box(PYTHON_SOURCE), black_box("sample.py"), false);
-            black_box(comments)
-        });
-    });
-    criterion.bench_function("detect_python_with_docstrings", |bencher| {
-        bencher.iter(|| {
-            let comments = detector.detect(black_box(PYTHON_SOURCE), black_box("sample.py"), true);
-            black_box(comments)
-        });
-    });
-    criterion.bench_function("detect_unsupported_extension", |bencher| {
-        bencher.iter(|| {
-            let comments =
-                detector.detect(black_box(PYTHON_SOURCE), black_box("sample.unknown"), true);
-            black_box(comments)
-        });
-    });
+fn measure(name: &str, run: &mut impl FnMut()) {
+    for _ in 0..WARMUP_ITERATIONS {
+        run();
+    }
+    let start = Instant::now();
+    for _ in 0..MEASURED_ITERATIONS {
+        run();
+    }
+    println!(
+        "{name}: {:?} per iteration",
+        start.elapsed() / MEASURED_ITERATIONS
+    );
 }
 
-fn benchmark_agent_memo(criterion: &mut Criterion) {
+fn main() {
+    let detector = CommentDetector::new();
+    measure("detect_python_no_docstrings", &mut || {
+        black_box(detector.detect(black_box(PYTHON_SOURCE), black_box("sample.py"), false));
+    });
+    measure("detect_python_with_docstrings", &mut || {
+        black_box(detector.detect(black_box(PYTHON_SOURCE), black_box("sample.py"), true));
+    });
+    measure("detect_unsupported_extension", &mut || {
+        black_box(detector.detect(black_box(PYTHON_SOURCE), black_box("sample.unknown"), true));
+    });
+
     let filter = AgentMemoFilter;
-    let early = CommentInfo::new(
+    let early_hit = CommentInfo::new(
         "// Changed from old to new",
         1,
         "sample.py",
         CommentType::Line,
         false,
     );
-    let late = CommentInfo::new(
+    let late_hit = CommentInfo::new(
         "// Switched from old to new",
         1,
         "sample.py",
         CommentType::Line,
         false,
     );
-    let miss = CommentInfo::new(
+    let full_miss = CommentInfo::new(
         "// calculate checksum before write",
         1,
         "sample.py",
         CommentType::Line,
         false,
     );
-    criterion.bench_function("agent_memo_early_hit", |bencher| {
-        bencher.iter(|| black_box(filter.is_agent_memo(black_box(&early))));
+    measure("agent_memo_early_hit", &mut || {
+        black_box(filter.is_agent_memo(black_box(&early_hit)));
     });
-    criterion.bench_function("agent_memo_late_hit", |bencher| {
-        bencher.iter(|| black_box(filter.is_agent_memo(black_box(&late))));
+    measure("agent_memo_late_hit", &mut || {
+        black_box(filter.is_agent_memo(black_box(&late_hit)));
     });
-    criterion.bench_function("agent_memo_full_miss", |bencher| {
-        bencher.iter(|| black_box(filter.is_agent_memo(black_box(&miss))));
+    measure("agent_memo_full_miss", &mut || {
+        black_box(filter.is_agent_memo(black_box(&full_miss)));
     });
-}
 
-fn benchmark_output(criterion: &mut Criterion) {
     let comments: Vec<CommentInfo> = (0..200)
         .map(|index| {
             CommentInfo::new(
@@ -77,46 +80,28 @@ fn benchmark_output(criterion: &mut Criterion) {
             )
         })
         .collect();
-    criterion.bench_function("build_comments_xml_many_comments", |bencher| {
-        bencher.iter(|| {
-            black_box(build_comments_xml(
-                black_box(&comments),
-                black_box("sample.py"),
-            ))
-        });
+    measure("build_comments_xml_many_comments", &mut || {
+        black_box(build_comments_xml(
+            black_box(&comments),
+            black_box("sample.py"),
+        ));
     });
-    criterion.bench_function("format_hook_message_many_comments", |bencher| {
-        bencher.iter(|| black_box(format_hook_message(black_box(&comments), black_box(""))));
+    measure("format_hook_message_many_comments", &mut || {
+        black_box(format_hook_message(black_box(&comments), black_box("")));
     });
-}
 
-fn benchmark_hook_api(criterion: &mut Criterion) {
     let edit_input = r##"{"tool_name":"Edit","tool_input":{"file_path":"sample.py","old_string":"print(1)","new_string":"# new comment\nprint(1)"}}"##;
     let multiedit_input = r##"{"tool_name":"MultiEdit","tool_input":{"file_path":"sample.py","edits":[{"old_string":"print(1)","new_string":"# new comment\nprint(1)"},{"old_string":"print(2)","new_string":"# second comment\nprint(2)"}]}}"##;
-
-    criterion.bench_function("check_hook_input_edit_new_comment", |bencher| {
-        bencher.iter(|| {
-            black_box(check_hook_input(
-                black_box(edit_input),
-                black_box("{{comments}}"),
-            ))
-        });
+    measure("check_hook_input_edit_new_comment", &mut || {
+        black_box(check_hook_input(
+            black_box(edit_input),
+            black_box("{{comments}}"),
+        ));
     });
-    criterion.bench_function("check_hook_input_multiedit_new_comments", |bencher| {
-        bencher.iter(|| {
-            black_box(check_hook_input(
-                black_box(multiedit_input),
-                black_box("{{comments}}"),
-            ))
-        });
+    measure("check_hook_input_multiedit_new_comments", &mut || {
+        black_box(check_hook_input(
+            black_box(multiedit_input),
+            black_box("{{comments}}"),
+        ));
     });
 }
-
-criterion_group!(
-    benches,
-    benchmark_detector,
-    benchmark_agent_memo,
-    benchmark_output,
-    benchmark_hook_api
-);
-criterion_main!(benches);
