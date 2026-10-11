@@ -1,4 +1,5 @@
 use comment_checker::detector::CommentDetector;
+use comment_checker::language::language_for_path;
 use comment_checker::models::CommentType;
 
 const SMOKE_CASES: [(&str, &str, &str, CommentType); 31] = [
@@ -362,4 +363,68 @@ fn detect_given_comment_inside_html_script_element_is_detected() {
             .iter()
             .any(|comment| comment.text.contains("injected comment"))
     );
+    assert_eq!(
+        comments
+            .iter()
+            .filter(|comment| comment.text.contains("injected comment"))
+            .count(),
+        1,
+        "an injected comment must be captured exactly once"
+    );
+}
+
+const CLEAN_CASES: [(&str, &str); 31] = [
+    ("main.py", "x = 1\n"),
+    ("main.go", "package main\n"),
+    ("main.ts", "const x: number = 1;\n"),
+    ("main.tsx", "const x = 1;\n"),
+    ("main.js", "const x = 1;\n"),
+    ("Main.java", "class Main {}\n"),
+    ("main.c", "int main(void) { return 0; }\n"),
+    ("main.cpp", "int main() { return 0; }\n"),
+    ("main.rs", "fn main() {}\n"),
+    ("main.rb", "x = 1\n"),
+    ("script.sh", "echo hi\n"),
+    ("Main.kt", "fun main() {}\n"),
+    ("main.swift", "let x = 1\n"),
+    ("main.cs", "class X {}\n"),
+    ("main.lua", "local x = 1\n"),
+    ("main.php", "<?php\n$x = 1;\n"),
+    ("main.ex", "defmodule X do\nend\n"),
+    ("main.ml", "let x = 1\n"),
+    ("Main.scala", "object X {}\n"),
+    ("main.groovy", "def x = 1\n"),
+    ("main.proto", "message X {}\n"),
+    ("config.hcl", "resource \"x\" \"y\" {}\n"),
+    ("main.sql", "SELECT 1;\n"),
+    ("config.toml", "x = 1\n"),
+    ("config.yaml", "x: 1\n"),
+    ("Main.elm", "module Main exposing (..)\n"),
+    ("config.cue", "package x\n"),
+    ("Dockerfile", "FROM debian\n"),
+    ("index.html", "<html></html>\n"),
+    ("style.css", "body { color: red; }\n"),
+    ("App.svelte", "<div></div>\n"),
+];
+
+#[test]
+fn pipeline_coverage_given_every_language_clean_fixtures_report_no_comments() {
+    // given
+    let detector = CommentDetector::new();
+    let mut failures = Vec::new();
+
+    // when
+    for (path, source) in CLEAN_CASES {
+        if language_for_path(path).is_none() {
+            failures.push(format!("{path}: grammar did not resolve"));
+            continue;
+        }
+        let comments = detector.detect(source, path, true);
+        if !comments.is_empty() {
+            failures.push(format!("{path}: clean fixture produced {comments:?}"));
+        }
+    }
+
+    // then
+    assert!(failures.is_empty(), "coverage failures: {failures:#?}");
 }
