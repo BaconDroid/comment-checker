@@ -1,6 +1,7 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LanguageSpec {
     pub name: &'static str,
+    pub comment_query: &'static str,
     pub docstring_query: Option<&'static str>,
 }
 
@@ -9,8 +10,17 @@ pub fn language_for_path(file_path: &str) -> Option<LanguageSpec> {
     let name = tree_sitter_language_pack::detect_language(file_path)?;
     Some(LanguageSpec {
         name,
+        comment_query: comment_query(name),
         docstring_query: docstring_query(name),
     })
+}
+
+fn comment_query(name: &str) -> &'static str {
+    match name {
+        "rust" | "java" => "(line_comment) @comment\n(block_comment) @comment",
+        "kotlin" => "(line_comment) @comment\n(multiline_comment) @comment",
+        _ => "(comment) @comment",
+    }
 }
 
 fn docstring_query(name: &str) -> Option<&'static str> {
@@ -43,12 +53,13 @@ mod tests {
     use super::language_for_path;
 
     #[test]
-    fn language_for_path_given_known_extension_returns_spec() {
+    fn language_for_path_given_known_extension_returns_spec_with_comment_query() {
         // given
         let spec = language_for_path("main.py");
 
         // then
         assert_eq!(spec.map(|spec| spec.name), Some("python"));
+        assert!(spec.is_some_and(|spec| !spec.comment_query.is_empty()));
     }
 
     #[test]

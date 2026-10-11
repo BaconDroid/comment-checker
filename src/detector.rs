@@ -2,20 +2,14 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex};
 
-use tree_sitter::{Parser, Query, QueryCursor, StreamingIterator, Tree};
+use tree_sitter::{Parser, Query, QueryCursor, StreamingIterator};
 
 use crate::language::{LanguageSpec, language_for_path};
 use crate::models::{CommentInfo, CommentType};
 
-const COMMENT_KINDS: &[&str] = &[
-    "comment",
-    "line_comment",
-    "block_comment",
-    "multiline_comment",
-];
-
 struct Runtime {
     language: tree_sitter::Language,
+    comment_query: Query,
     docstring_query: Option<Query>,
 }
 
@@ -52,14 +46,21 @@ impl CommentDetector {
             return Vec::new();
         };
 
-        let mut comments = collect_comments(&tree, content.as_bytes(), file_path);
+        let mut comments = captures_to_comments(
+            &runtime.comment_query,
+            &tree,
+            content.as_bytes(),
+            file_path,
+            false,
+        );
         if include_docstrings {
             if let Some(docstring_query) = &runtime.docstring_query {
-                comments.extend(captures_to_docstrings(
+                comments.extend(captures_to_comments(
                     docstring_query,
                     &tree,
                     content.as_bytes(),
                     file_path,
+                    true,
                 ));
             }
         }
@@ -76,11 +77,13 @@ fn runtime_for(spec: LanguageSpec) -> Option<Arc<Runtime>> {
     }
 
     let language = tree_sitter_language_pack::get_language(spec.name).ok()?;
+    let comment_query = Query::new(&language, spec.comment_query).ok()?;
     let docstring_query = spec
         .docstring_query
         .and_then(|source| Query::new(&language, source).ok());
     let runtime = Arc::new(Runtime {
         language,
+        comment_query,
         docstring_query,
     });
     runtimes.insert(spec.name, Arc::clone(&runtime));
@@ -91,14 +94,16 @@ fn parse_with_runtime(
     runtime: &Runtime,
     language_name: &'static str,
     source: &[u8],
-) -> Option<Tree> {
+) -> Option<tree_sitter::Tree> {
     PARSERS.with(|parsers| {
         let mut parsers = parsers.borrow_mut();
         if let Some(parser) = parsers.get_mut(language_name) {
             parser.parse(source, None)
         } else {
             let mut parser = Parser::new();
-            parser.set_language(&runtime.language).ok()?;
+            if parser.set_language(&runtime.language).is_err() {
+                return None;
+            }
             let tree = parser.parse(source, None);
             parsers.insert(language_name, parser);
             tree
@@ -106,46 +111,16 @@ fn parse_with_runtime(
     })
 }
 
-fn collect_comments(tree: &Tree, source: &[u8], file_path: &str) -> Vec<CommentInfo> {
-    let mut comments = Vec::new();
-    let mut cursor = tree.walk();
-    loop {
-        let node = cursor.node();
-        if COMMENT_KINDS.contains(&node.kind())
-            && let Ok(text) = node.utf8_text(source)
-        {
-            let comment_type = determine_comment_type(text, node.kind());
-            comments.push(CommentInfo::new(
-                text,
-                node.start_position().row + 1,
-                file_path,
-                comment_type,
-                false,
-            ));
-        }
-        if cursor.goto_first_child() {
-            continue;
-        }
-        loop {
-            if cursor.goto_next_sibling() {
-                break;
-            }
-            if !cursor.goto_parent() {
-                return comments;
-            }
-        }
-    }
-}
-
-fn captures_to_docstrings(
+fn captures_to_comments(
     query: &Query,
-    tree: &Tree,
+    tree: &tree_sitter::Tree,
     source: &[u8],
     file_path: &str,
+    force_docstring: bool,
 ) -> Vec<CommentInfo> {
     let mut cursor = QueryCursor::new();
     let mut captures = cursor.captures(query, tree.root_node(), source);
-    let mut docstrings = Vec::new();
+    let mut comments = Vec::new();
     captures.advance();
     while let Some((query_match, capture_index)) = captures.get() {
         let Some(capture) = query_match.captures.get(*capture_index) else {
@@ -157,16 +132,22 @@ fn captures_to_docstrings(
             captures.advance();
             continue;
         };
-        docstrings.push(CommentInfo::new(
+        let comment_type = if force_docstring {
+            CommentType::Docstring
+        } else {
+            determine_comment_type(text, node.kind())
+        };
+        let is_docstring = comment_type == CommentType::Docstring;
+        comments.push(CommentInfo::new(
             text,
             node.start_position().row + 1,
             file_path,
-            CommentType::Docstring,
-            true,
+            comment_type,
+            is_docstring,
         ));
         captures.advance();
     }
-    docstrings
+    comments
 }
 
 fn determine_comment_type(text: &str, node_kind: &str) -> CommentType {
