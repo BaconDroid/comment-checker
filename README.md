@@ -97,7 +97,7 @@ def test_something():
 
 python, go, typescript, javascript, rust, c, c++, java, ruby, php, swift, kotlin, scala, elixir, and more.
 
-if tree-sitter supports it, we support it. the archived Go implementation lives under `go/`; the production CLI is Rust.
+if tree-sitter supports it, we support it. the production CLI is Rust.
 
 ## how it works
 
