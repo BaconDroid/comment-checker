@@ -294,10 +294,10 @@ fn determine_comment_type(text: &str, node_kind: &str) -> CommentType {
     if node_kind == "block_comment" || node_kind == "multiline_comment" {
         return CommentType::Block;
     }
-    if stripped.starts_with("//") || stripped.starts_with('#') {
+    if stripped.starts_with("//") || stripped.starts_with('#') || stripped.starts_with("--") {
         return CommentType::Line;
     }
-    if stripped.starts_with("/*") || stripped.starts_with("<!--") || stripped.starts_with("--") {
+    if stripped.starts_with("/*") || stripped.starts_with("(*") || stripped.starts_with("<!--") {
         return CommentType::Block;
     }
     CommentType::Line

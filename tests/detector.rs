@@ -1,6 +1,195 @@
 use comment_checker::detector::CommentDetector;
 use comment_checker::models::CommentType;
 
+const SMOKE_CASES: [(&str, &str, &str, CommentType); 31] = [
+    (
+        "main.py",
+        "# Python comment\nx = 1",
+        "Python comment",
+        CommentType::Line,
+    ),
+    (
+        "main.go",
+        "// Go comment\npackage main",
+        "Go comment",
+        CommentType::Line,
+    ),
+    (
+        "test.ts",
+        "// TypeScript comment\nconst x: number = 1;",
+        "TypeScript comment",
+        CommentType::Line,
+    ),
+    (
+        "test.tsx",
+        "// TSX comment\nconst x = <div/>;",
+        "TSX comment",
+        CommentType::Line,
+    ),
+    (
+        "test.js",
+        "// JavaScript comment\nconst x = 1;",
+        "JavaScript comment",
+        CommentType::Line,
+    ),
+    (
+        "Test.java",
+        "// Java comment\npublic class Test {}",
+        "Java comment",
+        CommentType::Line,
+    ),
+    (
+        "main.c",
+        "// C comment\nint main() { return 0; }",
+        "C comment",
+        CommentType::Line,
+    ),
+    (
+        "main.cpp",
+        "// C++ comment\nint main() { return 0; }",
+        "C++ comment",
+        CommentType::Line,
+    ),
+    (
+        "main.rs",
+        "// Rust comment\nfn main() {}",
+        "Rust comment",
+        CommentType::Line,
+    ),
+    (
+        "test.rb",
+        "# Ruby comment\nputs \"hello\"",
+        "Ruby comment",
+        CommentType::Line,
+    ),
+    (
+        "script.sh",
+        "# Bash comment\necho \"hello\"",
+        "Bash comment",
+        CommentType::Line,
+    ),
+    (
+        "Main.kt",
+        "// Kotlin comment\nfun main() {}",
+        "Kotlin comment",
+        CommentType::Line,
+    ),
+    (
+        "main.swift",
+        "// Swift comment\nprint(\"hello\")",
+        "Swift comment",
+        CommentType::Line,
+    ),
+    (
+        "main.cs",
+        "// C# comment\nclass X {}",
+        "C# comment",
+        CommentType::Line,
+    ),
+    (
+        "main.lua",
+        "-- Lua comment\nlocal x = 1",
+        "Lua comment",
+        CommentType::Line,
+    ),
+    (
+        "main.php",
+        "<?php\n// PHP comment\n$x = 1;",
+        "PHP comment",
+        CommentType::Line,
+    ),
+    (
+        "main.ex",
+        "# Elixir comment\ndefmodule X do\nend",
+        "Elixir comment",
+        CommentType::Line,
+    ),
+    (
+        "main.ml",
+        "(* OCaml comment *)\nlet x = 1",
+        "OCaml comment",
+        CommentType::Block,
+    ),
+    (
+        "Main.scala",
+        "// Scala comment\nobject X {}",
+        "Scala comment",
+        CommentType::Line,
+    ),
+    (
+        "build.groovy",
+        "// Groovy comment\ndef x = 1",
+        "Groovy comment",
+        CommentType::Line,
+    ),
+    (
+        "main.proto",
+        "// Proto comment\nmessage X {}",
+        "Proto comment",
+        CommentType::Line,
+    ),
+    (
+        "config.hcl",
+        "# HCL comment\nresource \"x\" \"y\" {}",
+        "HCL comment",
+        CommentType::Line,
+    ),
+    (
+        "main.sql",
+        "-- SQL comment\nSELECT 1;",
+        "SQL comment",
+        CommentType::Line,
+    ),
+    (
+        "config.toml",
+        "# TOML comment\nx = 1",
+        "TOML comment",
+        CommentType::Line,
+    ),
+    (
+        "config.yaml",
+        "# YAML comment\nx: 1",
+        "YAML comment",
+        CommentType::Line,
+    ),
+    (
+        "Main.elm",
+        "-- Elm comment\nmodule Main exposing (..)",
+        "Elm comment",
+        CommentType::Line,
+    ),
+    (
+        "config.cue",
+        "// CUE comment\npackage x",
+        "CUE comment",
+        CommentType::Line,
+    ),
+    (
+        "Dockerfile",
+        "# Dockerfile comment\nFROM debian",
+        "Dockerfile comment",
+        CommentType::Line,
+    ),
+    (
+        "index.html",
+        "<!-- HTML comment -->\n<html></html>",
+        "HTML comment",
+        CommentType::Block,
+    ),
+    (
+        "style.css",
+        "/* CSS comment */\nbody { color: red; }",
+        "CSS comment",
+        CommentType::Block,
+    ),
+    (
+        "App.svelte",
+        "<!-- Svelte comment -->\n<div></div>",
+        "Svelte comment",
+        CommentType::Block,
+    ),
+];
+
 #[test]
 fn detect_given_python_line_comment_returns_comment_info() {
     // given
@@ -88,67 +277,29 @@ fn detect_given_go_comment_returns_comment_info() {
 fn detect_given_multilanguage_smoke_cases_returns_comment() {
     // given
     let detector = CommentDetector::new();
-    let cases = [
-        ("main.go", "// Go comment\npackage main", "Go comment"),
-        (
-            "test.ts",
-            "// TypeScript comment\nconst x: number = 1;",
-            "TypeScript comment",
-        ),
-        (
-            "test.js",
-            "// JavaScript comment\nconst x = 1;",
-            "JavaScript comment",
-        ),
-        (
-            "Test.java",
-            "// Java comment\npublic class Test {}",
-            "Java comment",
-        ),
-        (
-            "main.c",
-            "// C comment\nint main() { return 0; }",
-            "C comment",
-        ),
-        (
-            "main.cpp",
-            "// C++ comment\nint main() { return 0; }",
-            "C++ comment",
-        ),
-        ("main.rs", "// Rust comment\nfn main() {}", "Rust comment"),
-        ("test.rb", "# Ruby comment\nputs \"hello\"", "Ruby comment"),
-        (
-            "script.sh",
-            "# Bash comment\necho \"hello\"",
-            "Bash comment",
-        ),
-        (
-            "Main.kt",
-            "// Kotlin comment\nfun main() {}",
-            "Kotlin comment",
-        ),
-        (
-            "main.swift",
-            "// Swift comment\nprint(\"hello\")",
-            "Swift comment",
-        ),
-    ];
 
     // when
-    let results: Vec<_> = cases
+    let failures: Vec<String> = SMOKE_CASES
         .iter()
-        .map(|(path, source, expected)| {
+        .filter_map(|&(path, source, expected, expected_type)| {
             let comments = detector.detect(source, path, false);
-            (comments, expected)
+            let matched = comments.len() == 1
+                && comments[0].text.contains(expected)
+                && comments[0].comment_type == expected_type;
+            (!matched).then(|| {
+                format!(
+                    "{expected}: {found:?}",
+                    found = comments
+                        .iter()
+                        .map(|comment| (comment.text.as_str(), comment.comment_type))
+                        .collect::<Vec<_>>()
+                )
+            })
         })
         .collect();
 
     // then
-    for (comments, expected) in results {
-        assert_eq!(comments.len(), 1, "expected one comment for {expected}");
-        assert!(comments[0].text.contains(expected));
-        assert_eq!(comments[0].comment_type, CommentType::Line);
-    }
+    assert_eq!(failures.len(), 0, "smoke failures: {failures:#?}");
 }
 
 #[test]

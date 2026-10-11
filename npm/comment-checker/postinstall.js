@@ -13,7 +13,7 @@ const https = require("node:https");
 const { join } = require("node:path");
 const { spawnSync } = require("node:child_process");
 const { pipeline } = require("node:stream/promises");
-const { resolvePlatformPackageBinary } = require("./index");
+const { getBinaryName, getPlatformKey, resolvePlatformPackageBinary } = require("./index");
 
 const REPO = "code-yeongyu/go-claude-code-comment-checker";
 const MAX_REDIRECTS = 5;
@@ -25,10 +25,6 @@ const PLATFORM_MAP = {
   "linux-x64": { os: "linux", arch: "amd64", ext: "tar.gz" },
   "win32-x64": { os: "windows", arch: "amd64", ext: "zip" },
 };
-
-function getPlatformKey(platform = process.platform, arch = process.arch) {
-  return `${platform}-${arch === "x64" ? "x64" : arch}`;
-}
 
 function getPackageVersion() {
   return require("./package.json").version;
@@ -141,7 +137,7 @@ async function install(options = {}) {
 
   const baseDir = options.baseDir || __dirname;
   const binDir = join(baseDir, "bin");
-  const binaryName = platform === "win32" ? "comment-checker.exe" : "comment-checker";
+  const binaryName = getBinaryName(platform);
   const bundledBinaryPath = join(baseDir, "vendor", platformKey, binaryName);
   const binaryPath = join(binDir, binaryName);
   const platformPackageBinaryPath = resolvePlatformPackageBinary(platformKey, binaryName, baseDir);

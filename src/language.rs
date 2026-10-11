@@ -5,7 +5,7 @@ pub fn language_for_path(file_path: &str) -> Option<&'static str> {
 
 pub(crate) fn comment_query(name: &str) -> &'static str {
     match name {
-        "rust" | "java" => "(line_comment) @comment\n(block_comment) @comment",
+        "rust" | "java" | "elm" | "groovy" => "(line_comment) @comment\n(block_comment) @comment",
         "kotlin" => "(line_comment) @comment\n(multiline_comment) @comment",
         _ => "(comment) @comment",
     }
