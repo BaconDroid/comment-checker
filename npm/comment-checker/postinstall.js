@@ -215,11 +215,7 @@ if (require.main === module) {
 module.exports = {
   PLATFORM_MAP,
   downloadFile,
-  extractTarGz,
   extractZip,
-  getPackageVersion,
-  getPlatformKey,
   install,
   main,
-  runCommand,
 };
