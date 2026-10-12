@@ -111,9 +111,20 @@ where
     Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
 }
 
-/// Hand-rolled `--prompt <text>` / `--prompt=<text>` parser; every other argument is ignored.
-pub fn parse_prompt(arguments: &[String]) -> String {
+/// Parsed hook options shared by both repos. `min_confidence` is only meaningful for a repo whose
+/// findings carry a confidence (currently test-checker); others ignore it.
+#[derive(Clone, Debug, Default)]
+pub struct Options {
+    pub prompt: String,
+    pub min_confidence: Option<String>,
+}
+
+/// Hand-rolled argument parser: `--prompt <text>` / `--prompt=<text>` and
+/// `--min-confidence <level>` / `--min-confidence=<level>`; every other argument is ignored.
+#[must_use]
+pub fn parse_options(arguments: &[String]) -> Options {
     let mut prompt = String::new();
+    let mut min_confidence = None;
     let mut index = 0;
     while index < arguments.len() {
         let argument = arguments[index].as_str();
@@ -124,10 +135,20 @@ pub fn parse_prompt(arguments: &[String]) -> String {
                 prompt.clone_from(value);
                 index += 1;
             }
+        } else if let Some(value) = argument.strip_prefix("--min-confidence=") {
+            min_confidence = Some(value.to_owned());
+        } else if argument == "--min-confidence" {
+            if let Some(value) = arguments.get(index + 1) {
+                min_confidence = Some(value.clone());
+                index += 1;
+            }
         }
         index += 1;
     }
-    prompt
+    Options {
+        prompt,
+        min_confidence,
+    }
 }
 
 /// Append `text` with XML text escaping.
