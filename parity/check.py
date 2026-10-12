@@ -130,7 +130,7 @@ EXTRAS = {
     "test-checker": {
         "detector": set(),
         "filters": set(),
-        "language": {"is_test_path"},
+        "language": {"is_test_path", "is_harness_path"},
         "models": {"as_str"},
         "lib": {"rules"},
     },
