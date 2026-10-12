@@ -2,12 +2,22 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::engine::null_default;
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CommentType {
     Line,
     Block,
     Docstring,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq)]
+pub struct Edit {
+    #[serde(default, alias = "oldString", deserialize_with = "null_default")]
+    pub old_string: String,
+    #[serde(default, alias = "newString", deserialize_with = "null_default")]
+    pub new_string: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

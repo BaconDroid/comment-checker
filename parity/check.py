@@ -104,10 +104,17 @@ SHAPE = {
         "check_hook_input_json",
         "detect_json",
     },
-    "detector": {"Detector", "new", "detect"},
-    "filters": {"BddFilter", "DirectiveFilter", "ShebangFilter", "apply_filters", "should_skip"},
+    "detector": {"Detector", "new", "detect", "detect_edit"},
+    "filters": {
+        "BddFilter",
+        "DirectiveFilter",
+        "ShebangFilter",
+        "apply_filters",
+        "should_skip",
+        "is_agent_memo_phrase",
+    },
     "language": {"language_for_path"},
-    "models": {"Item", "Kind", "new", "normalized_text"},
+    "models": {"Item", "Kind", "new", "normalized_text", "Edit"},
     "output": {"build_xml", "format_hook_message"},
     "lib": {"api", "cli", "detector", "engine", "filters", "language", "models", "output"},
 }
@@ -118,15 +125,14 @@ EXTRAS = {
         "filters": {"AgentMemoFilter", "is_agent_memo"},
     },
     "test-checker": {
-        "detector": {"detect_edit"},
+        "detector": set(),
         "filters": {
             "SuppressionFilter",
             "is_line_suppressed",
             "is_file_suppressed",
-            "is_agent_memo_phrase",
         },
         "language": {"is_test_path"},
-        "models": {"Edit", "as_str"},
+        "models": {"as_str"},
         "lib": {"rules"},
     },
 }

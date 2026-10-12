@@ -81,7 +81,7 @@ impl AgentMemoFilter {
     #[must_use]
     pub fn is_agent_memo(&self, comment: &CommentInfo) -> bool {
         let text = strip_agent_prefixes(comment.text.trim());
-        is_english_agent_memo(text)
+        is_agent_memo_phrase(text)
     }
 }
 
@@ -94,7 +94,9 @@ fn strip_agent_prefixes(mut text: &str) -> &str {
     text
 }
 
-fn is_english_agent_memo(text: &str) -> bool {
+/// The agent-memo phrase catalog, applied to comment text.
+#[must_use]
+pub fn is_agent_memo_phrase(text: &str) -> bool {
     let starts_like_memo = match engine::first_ascii_lowercase_byte(text) {
         Some(b'a') => starts_with_any(text, &["added", "add", "after this"]),
         Some(b'b') => engine::starts_with_ignore_ascii_case(text, "before this"),
