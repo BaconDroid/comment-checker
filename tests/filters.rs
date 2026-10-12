@@ -1,10 +1,23 @@
 use comment_checker::filters::{
-    AgentMemoFilter, BddFilter, DirectiveFilter, ShebangFilter, apply_filters,
+    AgentMemoFilter, BddFilter, DirectiveFilter, ShebangFilter, SuppressionFilter, apply_filters,
+    is_line_suppressed,
 };
 use comment_checker::models::{CommentInfo, CommentType};
 
 fn line(text: &str) -> CommentInfo {
     CommentInfo::new(text, 1, "test.py", CommentType::Line, false)
+}
+
+#[test]
+fn suppression_filter_given_marker_returns_true() {
+    // given
+    let filter = SuppressionFilter;
+
+    // when / then
+    assert!(filter.should_skip(&line("# comment-checker: allow")));
+    assert!(filter.is_file_suppressed("x = 1  # comment-checker: allow"));
+    assert!(is_line_suppressed("# comment-checker: allow"));
+    assert!(!filter.is_file_suppressed("x = 1"));
 }
 
 #[test]

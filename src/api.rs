@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::detector::CommentDetector;
 use crate::engine::{self, null_default};
-use crate::filters::apply_filters;
+use crate::filters::{SuppressionFilter, apply_filters};
 use crate::language::language_for_path;
 use crate::models::Edit;
 use crate::output::format_hook_message;
@@ -102,6 +102,20 @@ fn evaluate(
     }
     if language_for_path(file_path).is_none() {
         return skip("Non-code file");
+    }
+
+    let suppression = SuppressionFilter;
+    let suppressed = match hook_input.tool_name.as_str() {
+        "Edit" => suppression.is_file_suppressed(&hook_input.tool_input.new_string),
+        "MultiEdit" => hook_input
+            .tool_input
+            .edits
+            .iter()
+            .any(|edit| suppression.is_file_suppressed(&edit.new_string)),
+        _ => suppression.is_file_suppressed(get_content_to_check(hook_input)),
+    };
+    if suppressed {
+        return skip("Suppressed by comment-checker: allow");
     }
 
     let detector = CommentDetector::new();
