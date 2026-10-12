@@ -118,7 +118,7 @@ EXTRAS = {
         "filters": {"AgentMemoFilter", "is_agent_memo"},
     },
     "test-checker": {
-        "detector": {"detect_edit", "supports_test_bodies"},
+        "detector": {"detect_edit"},
         "filters": {
             "SuppressionFilter",
             "is_line_suppressed",
@@ -148,7 +148,7 @@ MODULE_EXTRAS = {"comment-checker": set(), "test-checker": {"rules"}}
 
 # Required test-file stems (tests/*.rs) and per-repo extras.
 REQUIRED_TESTS = ["api", "cli", "detector", "filters", "integration", "models", "output", "parity"]
-TEST_EXTRAS = {"comment-checker": set(), "test-checker": {"contract"}}
+TEST_EXTRAS = {"comment-checker": set(), "test-checker": set()}
 
 CAMEL_CASE = re.compile(r"^[A-Z][A-Za-z0-9]*$")
 SNAKE_CASE = re.compile(r"^[a-z][a-z0-9_]*$")
