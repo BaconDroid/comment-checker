@@ -93,7 +93,7 @@ fn runtime_by_name(name: &str) -> Option<Arc<Runtime>> {
     }
 
     let language = tree_sitter_language_pack::get_language(name).ok()?;
-    let comment_query = Query::new(&language, crate::language::comment_query(name)).ok()?;
+    let comment_query = Query::new(&language, engine::comment_query(name)).ok()?;
     let docstring_query = crate::language::docstring_query(name)
         .and_then(|source| Query::new(&language, source).ok());
     let injection_query = tree_sitter_language_pack::get_injections_query(name)
