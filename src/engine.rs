@@ -7,7 +7,7 @@ use std::hash::Hash;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use tree_sitter::{
     Language, ParseOptions, ParseState, Parser, Query, QueryCursor, StreamingIterator, Tree,
 };
@@ -235,4 +235,74 @@ where
         .into_iter()
         .filter(|item| seen.insert(key(item)))
         .collect()
+}
+
+/// Serialize a hook result, falling back to an error payload on failure.
+pub fn result_json<T: Serialize>(value: &T) -> String {
+    serde_json::to_string(value).unwrap_or_else(|error| fallback_json(&error.to_string()))
+}
+
+/// The shared serialization-failure payload.
+pub fn fallback_json(error: &str) -> String {
+    serde_json::json!({
+        "exitCode": 1,
+        "message": format!("serialization failed: {error}"),
+    })
+    .to_string()
+}
+
+/// Strip one leading prefix, if present, then trim.
+pub fn strip_one_prefix<'a>(text: &'a str, prefixes: &[&str]) -> &'a str {
+    let mut normalized = text.trim();
+    for prefix in prefixes {
+        if let Some(rest) = normalized.strip_prefix(prefix) {
+            normalized = rest.trim();
+            break;
+        }
+    }
+    normalized
+}
+
+/// First byte of `text`, lowercased (used to bucket the agent-memo catalog).
+pub fn first_ascii_lowercase_byte(text: &str) -> Option<u8> {
+    text.as_bytes().first().map(u8::to_ascii_lowercase)
+}
+
+/// ASCII-case-insensitive `starts_with`.
+pub fn starts_with_ignore_ascii_case(text: &str, prefix: &str) -> bool {
+    text.as_bytes()
+        .get(..prefix.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(prefix.as_bytes()))
+}
+
+/// Whether `text` starts with `first` followed by any of `seconds` (case-insensitive).
+pub fn starts_with_word_pair(text: &str, first: &str, seconds: &[&str]) -> bool {
+    let Some(rest) = strip_prefix_ignore_ascii_case(text, first) else {
+        return false;
+    };
+    let rest = rest.trim_start();
+    seconds
+        .iter()
+        .any(|second| starts_with_ignore_ascii_case(rest, second))
+}
+
+/// `starts_with_ignore_ascii_case`, returning the remainder.
+pub fn strip_prefix_ignore_ascii_case<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
+    starts_with_ignore_ascii_case(text, prefix).then(|| &text[prefix.len()..])
+}
+
+/// Whether `text` contains an alphabetic `a -> b` arrow.
+pub fn has_ascii_arrow(text: &str) -> bool {
+    let Some((left, right)) = text.split_once("->") else {
+        return false;
+    };
+    let left = left.trim();
+    let right = right.trim();
+    !left.is_empty()
+        && !right.is_empty()
+        && left.bytes().all(|byte| byte.is_ascii_alphabetic())
+        && right
+            .bytes()
+            .next()
+            .is_some_and(|byte| byte.is_ascii_alphabetic())
 }
