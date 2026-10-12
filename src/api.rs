@@ -4,7 +4,7 @@ use crate::detector::CommentDetector;
 use crate::engine::{self, null_default};
 use crate::filters::apply_filters;
 use crate::language::language_for_path;
-use crate::models::CommentInfo;
+use crate::models::Edit;
 use crate::output::format_hook_message;
 
 pub const EXIT_PASS: i32 = 0;
@@ -46,15 +46,7 @@ struct ToolInput {
     #[serde(default, alias = "oldString", deserialize_with = "null_default")]
     old_string: String,
     #[serde(default, deserialize_with = "null_default")]
-    edits: Vec<EditInput>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct EditInput {
-    #[serde(default, alias = "oldString", deserialize_with = "null_default")]
-    old_string: String,
-    #[serde(default, alias = "newString", deserialize_with = "null_default")]
-    new_string: String,
+    edits: Vec<Edit>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -118,8 +110,7 @@ fn evaluate(
             if hook_input.tool_input.new_string.is_empty() {
                 return skip("No content to check");
             }
-            detect_new_comments_for_edit(
-                &detector,
+            detector.detect_edit(
                 &hook_input.tool_input.old_string,
                 &hook_input.tool_input.new_string,
                 file_path,
@@ -135,8 +126,7 @@ fn evaluate(
                 if edit.new_string.is_empty() {
                     continue;
                 }
-                comments.extend(detect_new_comments_for_edit(
-                    &detector,
+                comments.extend(detector.detect_edit(
                     &edit.old_string,
                     &edit.new_string,
                     file_path,
@@ -187,32 +177,6 @@ fn get_content_to_check(input: &HookInput) -> &str {
     } else {
         input.tool_input.content.as_str()
     }
-}
-
-fn detect_new_comments_for_edit(
-    detector: &CommentDetector,
-    old_string: &str,
-    new_string: &str,
-    file_path: &str,
-    include_docstrings: bool,
-) -> Vec<CommentInfo> {
-    let comments = detector.detect(new_string, file_path, include_docstrings);
-    if old_string.is_empty() {
-        return comments;
-    }
-    // Keep only comments that sit on a line the edit actually added, using an LCS over the old and
-    // new lines. This is accurate for repeated/moved text, where a plain set-membership check would
-    // drop a genuinely new comment whose text already appeared elsewhere.
-    let added = added_lines(old_string, new_string);
-    comments
-        .into_iter()
-        .filter(|comment| added.contains(&comment.line_number.saturating_sub(1)))
-        .collect()
-}
-
-/// New (added) line indices in `new_content`, computed with an LCS over trimmed lines.
-fn added_lines(old_content: &str, new_content: &str) -> std::collections::HashSet<usize> {
-    crate::engine::added_lines(old_content, new_content)
 }
 
 fn skip(reason: &str) -> HookCheckResult {

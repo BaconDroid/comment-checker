@@ -59,6 +59,29 @@ impl CommentDetector {
             (comment.line_number, comment.normalized_text())
         })
     }
+
+    /// Analyze an edit: report only comments newly introduced by `new_string`.
+    #[must_use]
+    pub fn detect_edit(
+        &self,
+        old_string: &str,
+        new_string: &str,
+        file_path: &str,
+        include_docstrings: bool,
+    ) -> Vec<CommentInfo> {
+        let comments = self.detect(new_string, file_path, include_docstrings);
+        if old_string.is_empty() {
+            return comments;
+        }
+        // Keep only comments that sit on a line the edit actually added, using an LCS over the old
+        // and new lines. This is accurate for repeated/moved text, where a plain set-membership
+        // check would drop a genuinely new comment whose text already appeared elsewhere.
+        let added = engine::added_lines(old_string, new_string);
+        comments
+            .into_iter()
+            .filter(|comment| added.contains(&comment.line_number.saturating_sub(1)))
+            .collect()
+    }
 }
 
 fn runtime_by_name(name: &str) -> Option<Arc<Runtime>> {
