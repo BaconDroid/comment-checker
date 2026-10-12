@@ -224,6 +224,16 @@ pub fn added_lines(old_content: &str, new_content: &str) -> HashSet<usize> {
     (0..rows).filter(|&index| !matched[index]).collect()
 }
 
+/// Whether a line carries the given suppression marker.
+pub fn is_line_suppressed(text: &str, marker: &str) -> bool {
+    text.to_lowercase().contains(marker)
+}
+
+/// Whether any line in `content` carries the given suppression marker.
+pub fn is_file_suppressed(content: &str, marker: &str) -> bool {
+    content.lines().any(|line| is_line_suppressed(line, marker))
+}
+
 /// Keep the first item for each key.
 pub fn dedupe_by<T, K, F>(items: Vec<T>, mut key: F) -> Vec<T>
 where

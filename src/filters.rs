@@ -34,6 +34,8 @@ const DIRECTIVE_PREFIXES: &[&str] = &[
     "forbid",
 ];
 
+const SUPPRESSION_MARKER: &str = "comment-checker: allow";
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct BddFilter;
 
@@ -72,6 +74,26 @@ impl ShebangFilter {
     pub fn should_skip(&self, comment: &CommentInfo) -> bool {
         comment.text.trim().starts_with("#!")
     }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SuppressionFilter;
+
+impl SuppressionFilter {
+    #[must_use]
+    pub fn should_skip(&self, comment: &CommentInfo) -> bool {
+        is_line_suppressed(&comment.text)
+    }
+
+    #[must_use]
+    pub fn is_file_suppressed(&self, content: &str) -> bool {
+        engine::is_file_suppressed(content, SUPPRESSION_MARKER)
+    }
+}
+
+#[must_use]
+pub fn is_line_suppressed(text: &str) -> bool {
+    engine::is_line_suppressed(text, SUPPRESSION_MARKER)
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -173,12 +195,14 @@ pub fn apply_filters(comments: &[CommentInfo]) -> Vec<CommentInfo> {
     let bdd = BddFilter;
     let directive = DirectiveFilter;
     let shebang = ShebangFilter;
+    let suppression = SuppressionFilter;
     comments
         .iter()
         .filter(|comment| {
             !bdd.should_skip(comment)
                 && !directive.should_skip(comment)
                 && !shebang.should_skip(comment)
+                && !suppression.should_skip(comment)
         })
         .cloned()
         .collect()

@@ -102,3 +102,20 @@ fn check_hook_input_given_edit_adding_comment_with_repeated_text_exits_two() {
     // then
     assert_eq!(result.exit_code, 2);
 }
+
+#[test]
+fn check_hook_input_given_file_suppression_marker_skips() {
+    // given
+    let input = r##"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"# comment-checker: allow\n# comment\nprint(1)"}}"##;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 0);
+    assert!(
+        result
+            .message
+            .contains("Suppressed by comment-checker: allow")
+    );
+}
