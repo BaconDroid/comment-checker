@@ -83,11 +83,11 @@ pub fn check_hook_input_with_options(
 #[must_use]
 pub fn check_hook_input_from_reader<R: std::io::Read>(
     reader: R,
-    custom_prompt: &str,
+    options: &crate::engine::Options,
 ) -> HookCheckResult {
     serde_json::from_reader::<R, HookInput>(reader).map_or_else(
         |_| skip("Invalid input format"),
-        |hook_input| evaluate(&hook_input, custom_prompt, true),
+        |hook_input| evaluate(&hook_input, &options.prompt, true),
     )
 }
 
