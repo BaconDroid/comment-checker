@@ -3,14 +3,6 @@ pub fn language_for_path(file_path: &str) -> Option<&'static str> {
     tree_sitter_language_pack::detect_language(file_path)
 }
 
-pub(crate) fn comment_query(name: &str) -> &'static str {
-    match name {
-        "rust" | "java" | "elm" | "groovy" => "(line_comment) @comment\n(block_comment) @comment",
-        "kotlin" => "(line_comment) @comment\n(multiline_comment) @comment",
-        _ => "(comment) @comment",
-    }
-}
-
 pub(crate) fn docstring_prefix(name: &str) -> Option<&'static str> {
     matches!(name, "javascript" | "typescript" | "tsx" | "java").then_some("/**")
 }

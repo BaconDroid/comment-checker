@@ -15,6 +15,50 @@ use tree_sitter::{
 /// Per-process parse budget: pathological input is aborted instead of hanging the hook.
 pub const PARSE_TIME_BUDGET: Duration = Duration::from_millis(50);
 
+/// BDD keywords allow-listed by both filter catalogs.
+pub const BDD_KEYWORDS: &[&str] = &[
+    "given",
+    "when",
+    "then",
+    "arrange",
+    "act",
+    "assert",
+    "when & then",
+    "when&then",
+];
+
+/// Linter directive prefixes allow-listed by both filter catalogs.
+pub const DIRECTIVE_PREFIXES: &[&str] = &[
+    "type:",
+    "noqa",
+    "pyright:",
+    "ruff:",
+    "mypy:",
+    "pylint:",
+    "flake8:",
+    "pyre:",
+    "pytype:",
+    "eslint-disable",
+    "eslint-ignore",
+    "prettier-ignore",
+    "ts-ignore",
+    "ts-expect-error",
+    "clippy:",
+    "allow",
+    "deny",
+    "warn",
+    "forbid",
+];
+
+/// The per-language comment query, shared by both repos' detectors.
+pub(crate) fn comment_query(name: &str) -> &'static str {
+    match name {
+        "rust" | "java" | "elm" | "groovy" => "(line_comment) @comment\n(block_comment) @comment",
+        "kotlin" => "(line_comment) @comment\n(multiline_comment) @comment",
+        _ => "(comment) @comment",
+    }
+}
+
 thread_local! {
     static PARSERS: RefCell<HashMap<String, Parser>> = RefCell::new(HashMap::new());
 }
