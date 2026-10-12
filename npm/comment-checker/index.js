@@ -12,7 +12,7 @@ const SUPPORTED_PLATFORMS = [
 ];
 
 function getPlatformKey(platform = process.platform, arch = process.arch) {
-  return `${platform}-${arch === "x64" ? "x64" : arch}`;
+  return `${platform}-${arch}`;
 }
 
 function getBinaryName(platform = process.platform) {

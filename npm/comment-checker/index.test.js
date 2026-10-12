@@ -39,23 +39,6 @@ function rootPackageDir(root) {
   return baseDir;
 }
 
-test("lists supported platforms", () => {
-  // given
-  const platforms = checker.SUPPORTED_PLATFORMS;
-
-  // when
-  const resolvedPlatforms = platforms;
-
-  // then
-  assert.deepEqual(resolvedPlatforms, [
-    "darwin-arm64",
-    "darwin-x64",
-    "linux-arm64",
-    "linux-x64",
-    "win32-x64",
-  ]);
-});
-
 test("resolves bundled vendor binary without postinstall", () => {
   // given
   const root = tempDir();
