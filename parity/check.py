@@ -3,10 +3,12 @@
 
 `comment-checker` and `test-checker` are two separate single-package repos that share a surface
 which must stay identical after normalizing the project name: build/config files, the CI and release
-workflows and scripts, the npm wrapper, the CLI entrypoints, the shared conformance suite, and this
-harness itself. This script reads (or clones) the sibling repo, normalizes both sides, and fails on
-any divergence. The domain layer (`rules`/`detector`/`filters`/`models`/`output`/`api`,
-`README`, `AGENTS`) is intentionally excluded.
+workflows and scripts, the npm wrapper, the CLI entrypoints, the shared engine, the shared
+conformance suite, and this harness itself. This script reads (or clones) the sibling repo,
+normalizes both sides, and fails on any divergence. It also checks each repo against a shared
+API-shape + naming-convention contract. The domain layer's *content*
+(`rules`/`detector`/`filters`/`models`/`output`/`api`, `README`, `AGENTS`) is intentionally excluded
+from the byte diff, but its *shape* is checked.
 
 Usage:
   python3 parity/check.py                                   # clone the sibling from GitHub
@@ -23,6 +25,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import NoReturn
 
 REPOS = {
     "comment-checker": "https://github.com/BaconDroid/comment-checker.git",
@@ -73,6 +76,84 @@ SHARED = [
 # Prefixes compared byte-for-byte (no name normalization): the shared harness and conformance suite.
 IDENTICAL_PREFIXES = ("parity/", "tests/parity.rs")
 
+# --- API-shape + naming-convention contract ------------------------------------------------------
+# Canonical public item names: a per-repo alias table maps domain synonyms to one canonical name, so
+# the same shape can be asserted on both repos.
+ALIASES = {
+    "CommentDetector": "Detector",
+    "TestDetector": "Detector",
+    "CommentInfo": "Item",
+    "Finding": "Item",
+    "CommentType": "Kind",
+    "Confidence": "Kind",
+    "build_comments_xml": "build_xml",
+    "build_findings_xml": "build_xml",
+    "detect_comments_json": "detect_json",
+    "detect_findings_json": "detect_json",
+}
+
+# Module -> required canonical public items (both repos must expose exactly these, plus extras).
+SHAPE = {
+    "api": {
+        "HookCheckResult",
+        "pass",
+        "block",
+        "check_hook_input",
+        "check_hook_input_with_options",
+        "check_hook_input_from_reader",
+        "check_hook_input_json",
+        "detect_json",
+    },
+    "detector": {"Detector", "new", "detect"},
+    "filters": {"BddFilter", "DirectiveFilter", "ShebangFilter", "apply_filters", "should_skip"},
+    "language": {"language_for_path"},
+    "models": {"Item", "Kind", "new", "normalized_text"},
+    "output": {"build_xml", "format_hook_message"},
+    "lib": {"api", "cli", "detector", "engine", "filters", "language", "models", "output"},
+}
+
+# Documented per-repo extras (canonical names) beyond SHAPE.
+EXTRAS = {
+    "comment-checker": {
+        "filters": {"AgentMemoFilter", "is_agent_memo"},
+    },
+    "test-checker": {
+        "detector": {"detect_edit", "supports_test_bodies"},
+        "filters": {
+            "SuppressionFilter",
+            "is_line_suppressed",
+            "is_file_suppressed",
+            "is_agent_memo_phrase",
+        },
+        "language": {"is_test_path"},
+        "models": {"Edit", "as_str"},
+        "lib": {"rules"},
+    },
+}
+
+# Required module stems (src/*.rs) and per-repo extras.
+REQUIRED_MODULES = [
+    "api",
+    "cli",
+    "detector",
+    "engine",
+    "filters",
+    "language",
+    "lib",
+    "main",
+    "models",
+    "output",
+]
+MODULE_EXTRAS = {"comment-checker": set(), "test-checker": {"rules"}}
+
+# Required test-file stems (tests/*.rs) and per-repo extras.
+REQUIRED_TESTS = ["api", "cli", "detector", "filters", "integration", "models", "output", "parity"]
+TEST_EXTRAS = {"comment-checker": set(), "test-checker": {"contract"}}
+
+CAMEL_CASE = re.compile(r"^[A-Z][A-Za-z0-9]*$")
+SNAKE_CASE = re.compile(r"^[a-z][a-z0-9_]*$")
+PUBLIC_ITEM = re.compile(r"^\s*pub (?:const )?(fn|struct|enum|trait|type|mod)\s+([A-Za-z_][A-Za-z0-9_]*)", re.MULTILINE)
+
 
 def normalize(text: str) -> str:
     for comment_token, test_token, placeholder in TOKENS:
@@ -104,6 +185,73 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def stems(directory: Path, suffix: str) -> set[str]:
+    if not directory.is_dir():
+        return set()
+    return {p.stem for p in directory.glob(f"*{suffix}") if p.is_file()}
+
+
+def canonical_public_items(path: Path) -> set[str]:
+    items = set()
+    for match in PUBLIC_ITEM.finditer(read(path)):
+        items.add(ALIASES.get(match.group(2), match.group(2)))
+    return items
+
+
+def shape_violations(root: Path, repo: str) -> list[str]:
+    problems: list[str] = []
+
+    modules = stems(root / "src", ".rs")
+    expected_modules = set(REQUIRED_MODULES) | MODULE_EXTRAS[repo]
+    for missing in sorted(expected_modules - modules):
+        problems.append(f"{repo}: src/{missing}.rs is missing")
+    for unexpected in sorted(modules - expected_modules):
+        problems.append(f"{repo}: src/{unexpected}.rs is not in the shape contract")
+
+    for module, required in SHAPE.items():
+        path = root / "src" / f"{module}.rs"
+        if not path.is_file():
+            continue
+        actual = canonical_public_items(path)
+        allowed = required | EXTRAS[repo].get(module, set())
+        for missing in sorted(required - actual):
+            problems.append(f"{repo}: src/{module}.rs must expose `{missing}`")
+        for unexpected in sorted(actual - allowed):
+            problems.append(f"{repo}: src/{module}.rs exposes unexpected `{unexpected}`")
+
+    tests = stems(root / "tests", ".rs")
+    expected_tests = set(REQUIRED_TESTS) | TEST_EXTRAS[repo]
+    for missing in sorted(expected_tests - tests):
+        problems.append(f"{repo}: tests/{missing}.rs is missing")
+    for unexpected in sorted(tests - expected_tests):
+        problems.append(f"{repo}: tests/{unexpected}.rs is not in the shape contract")
+
+    benches = stems(root / "benches", ".rs")
+    normalized_benches = {normalize(name) for name in benches}
+    if normalized_benches != {"CHECKER_U"}:
+        problems.append(f"{repo}: benches must be exactly one CHECKER_U target, found {sorted(benches)}")
+
+    return problems
+
+
+def naming_violations(root: Path) -> list[str]:
+    problems: list[str] = []
+    for directory, suffix in (("src", ".rs"), ("tests", ".rs"), ("benches", ".rs")):
+        folder = root / directory
+        if not folder.is_dir():
+            continue
+        for path in sorted(folder.glob(f"*{suffix}")):
+            if not SNAKE_CASE.match(path.stem):
+                problems.append(f"{root.name}: file {directory}/{path.name} is not snake_case")
+    for path in sorted((root / "src").glob("*.rs")):
+        for kind, name in PUBLIC_ITEM.findall(read(path)):
+            if kind in {"struct", "enum", "trait", "type"} and not CAMEL_CASE.match(name):
+                problems.append(f"{root.name}: {path.name} type `{name}` is not CamelCase")
+            if kind in {"fn", "mod"} and not SNAKE_CASE.match(name):
+                problems.append(f"{root.name}: {path.name} {kind} `{name}` is not snake_case")
+    return problems
+
+
 def diff_report(relative: str, local_text: str, sibling_text: str) -> str:
     diff = list(
         difflib.unified_diff(
@@ -118,7 +266,7 @@ def diff_report(relative: str, local_text: str, sibling_text: str) -> str:
     return "\n".join(diff[:24])
 
 
-def fail(message: str) -> None:
+def fail(message: str) -> NoReturn:
     print(f"parity: {message}", file=sys.stderr)
     sys.exit(1)
 
@@ -126,8 +274,9 @@ def fail(message: str) -> None:
 def main() -> int:
     local = Path.cwd()
     name = detect_name(local)
-    if name not in REPOS:
+    if name is None or name not in REPOS:
         fail(f"unknown project name in Cargo.toml: {name!r}")
+    repo: str = name
 
     sibling_name = next(key for key in REPOS if key != name)
     sibling_env = os.environ.get("PARITY_SIBLING")
@@ -176,6 +325,10 @@ def main() -> int:
         elif normalize(read(local_path)) != normalize(read(sibling_path)):
             drift.append(diff_report(relative, normalize(read(local_path)), normalize(read(sibling_path))))
 
+    contract = shape_violations(local, repo) + naming_violations(local)
+    if not bootstrap:
+        contract += shape_violations(sibling, sibling_name) + naming_violations(sibling)
+
     if temp_dir is not None:
         subprocess.run(["rm", "-rf", str(temp_dir)], check=False)  # noqa: S603
 
@@ -190,6 +343,12 @@ def main() -> int:
                 "failing. It will be enforced once both repos contain parity/."
             )
             return 0
+        return 1
+
+    if contract:
+        print("parity: API-shape / naming contract violations:")
+        for problem in contract:
+            print(f"  - {problem}")
         return 1
 
     print("parity: OK")
