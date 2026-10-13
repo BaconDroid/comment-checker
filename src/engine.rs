@@ -122,17 +122,21 @@ pub struct Options {
     pub prompt: String,
     pub min_confidence: Option<String>,
     pub strip: bool,
+    pub version: bool,
 }
 
 /// Hand-rolled argument parser.
 ///
 /// Recognises `--prompt <text>` / `--prompt=<text>`, `--min-confidence <level>` /
-/// `--min-confidence=<level>`, and the inert `--strip`; every other argument is ignored.
+/// `--min-confidence=<level>`, the inert `--strip`, and `--version`; every other argument is
+/// ignored. A value consumed by `--prompt`/`--min-confidence` is never read as a flag, so
+/// `--prompt --version` sets the prompt instead of printing the version.
 #[must_use]
 pub fn parse_options(arguments: &[String]) -> Options {
     let mut prompt = String::new();
     let mut min_confidence = None;
     let mut strip = false;
+    let mut version = false;
     let mut index = 0;
     while index < arguments.len() {
         let argument = arguments[index].as_str();
@@ -152,6 +156,8 @@ pub fn parse_options(arguments: &[String]) -> Options {
             }
         } else if argument == "--strip" {
             strip = true;
+        } else if argument == "--version" {
+            version = true;
         }
         index += 1;
     }
@@ -159,6 +165,7 @@ pub fn parse_options(arguments: &[String]) -> Options {
         prompt,
         min_confidence,
         strip,
+        version,
     }
 }
 

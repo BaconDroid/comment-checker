@@ -116,6 +116,20 @@ fn cli_given_version_prints_name_and_version() -> std::io::Result<()> {
 }
 
 #[test]
+fn cli_given_prompt_version_treats_it_as_a_prompt_value() -> std::io::Result<()> {
+    // given: `--version` is the value consumed by `--prompt`, not a standalone flag
+    let input = r##"{"tool_name":"Write","tool_input":{"file_path":"test.py","content":"# comment\nprint(1)"}}"##;
+
+    // when
+    let output = run_checker(input, &["--prompt", "--version"])?;
+
+    // then
+    assert!(output.stdout.is_empty(), "the version must not be printed");
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "--version");
+    Ok(())
+}
+
+#[test]
 fn cli_given_strip_is_inert_and_still_reports() -> std::io::Result<()> {
     // given: a trigger payload with the inert --strip flag
     let input = r##"{"tool_name":"Write","tool_input":{"file_path":"test.py","content":"# comment\nprint(1)"}}"##;

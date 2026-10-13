@@ -73,13 +73,17 @@ def main() -> int:
     p95 = samples[int(len(samples) * 0.95)]
     if "debug" in binary.parts:
         note = "debug profile: the budget applies to release"
+        over_budget = False
     else:
-        verdict = "ok" if p95 < BUDGET_P95_MS else "OVER BUDGET"
-        note = f"{verdict}, budget p95 < {BUDGET_P95_MS} ms"
+        over_budget = p95 >= BUDGET_P95_MS
+        note = f"{'OVER BUDGET' if over_budget else 'ok'}, budget p95 < {BUDGET_P95_MS} ms"
     print(f"\nper-invocation (startup included): p50 {p50:.2f} ms, p95 {p95:.2f} ms [{note}]")
 
-    if failures:
-        print(f"\nbaseline: {failures} contract failure(s)", file=sys.stderr)
+    if failures or over_budget:
+        print(
+            f"\nbaseline: {failures} contract failure(s), over-budget={over_budget}",
+            file=sys.stderr,
+        )
         return 1
     return 0
 

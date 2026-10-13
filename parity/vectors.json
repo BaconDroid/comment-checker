@@ -8,7 +8,7 @@
     "cases": [
       { "name": "malformed-json", "input": "not json", "exit": 0 },
       { "name": "empty-stdin", "input": "", "exit": 0 },
-      { "name": "unknown-tool", "input": "{\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"a.py\"}}", "exit": 0 },
+      { "name": "unknown-tool", "input": "{\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"a.py\",\"content\":\"# comment\\nprint(1)\"}}", "exit": 0 },
       { "name": "missing-file-path", "input": "{\"tool_name\":\"Write\",\"tool_input\":{\"content\":\"# c\"}}", "exit": 0 },
       { "name": "unknown-extension", "input": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"a.zzz\",\"content\":\"# c\"}}", "exit": 0 },
       { "name": "suppression-marker", "input": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"a.py\",\"content\":\"# comment-checker: allow\\n# x\\n\"}}", "exit": 0 },
@@ -26,7 +26,7 @@
     "cases": [
       { "name": "malformed-json", "input": "not json", "exit": 0 },
       { "name": "empty-stdin", "input": "", "exit": 0 },
-      { "name": "unknown-tool", "input": "{\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"tests/a_test.py\",\"content\":\"def test_a():\\n    assert x == 1\\n\"}}", "exit": 0 },
+      { "name": "unknown-tool", "input": "{\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"tests/a_test.py\",\"content\":\"def test_a():\\n    @pytest.mark.skip\\n    assert x == 1\\n\"}}", "exit": 0 },
       { "name": "missing-file-path", "input": "{\"tool_name\":\"Write\",\"tool_input\":{\"content\":\"def test_a():\\n    assert x == 1\\n\"}}", "exit": 0 },
       { "name": "unknown-extension", "input": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"a.zzz\",\"content\":\"x\"}}", "exit": 0 },
       { "name": "null-fields", "input": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"tests/a_test.py\",\"content\":\"def test_a():\\n    assert x == 1\\n\",\"old_string\":null}}", "exit": 0 },
