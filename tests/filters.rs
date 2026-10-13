@@ -358,11 +358,21 @@ fn apply_filters_spares_justifications_and_flags_proven_smells() {
             Some("vacuous-todo"),
         ),
         ("# noqa: E501", CommentType::Line, None),
-        // D13: a directive does not acquit a proven text smell
+        // D13: a directive does not acquit a proven text smell (here `allow = 1` is both a
+        // directive prefix and a code-shaped assignment)
+        ("# allow = 1", CommentType::Line, Some("commented-out-code")),
+        // regression: directive descriptions with prose punctuation are spared, not read as code
         (
-            "# noqa: E501; x = 1",
+            "// eslint-disable-next-line no-unused-vars -- legacy",
             CommentType::Line,
-            Some("commented-out-code"),
+            None,
+        ),
+        ("# noqa: E501; note kept", CommentType::Line, None),
+        // regression: prose that merely starts with a code keyword is not commented-out code
+        (
+            "# if you need to skip this",
+            CommentType::Line,
+            Some("unnecessary-comment"),
         ),
     ];
 

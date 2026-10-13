@@ -12,7 +12,7 @@
   { "text": "# x = 1;", "comment_type": "line", "expected": "commented-out-code" },
   { "text": "// return foo;", "comment_type": "line", "expected": "commented-out-code" },
   { "text": "# print(x)", "comment_type": "line", "expected": "commented-out-code" },
-  { "text": "# import os", "comment_type": "line", "expected": "commented-out-code" },
+  { "text": "# import os;", "comment_type": "line", "expected": "commented-out-code" },
   { "text": "// const x = 1;", "comment_type": "line", "expected": "commented-out-code" },
   { "text": "# def foo():", "comment_type": "line", "expected": "commented-out-code" },
 

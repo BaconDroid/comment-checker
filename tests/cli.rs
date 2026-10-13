@@ -125,6 +125,11 @@ fn cli_given_strip_is_inert_and_still_reports() -> std::io::Result<()> {
 
     // then
     assert_eq!(output.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("inert"));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let warning = format!(
+        "[{}] --strip is inert; findings are reported but the file is never rewritten.\n",
+        env!("CARGO_PKG_NAME")
+    );
+    assert!(stderr.starts_with(&warning), "stderr: {stderr}");
     Ok(())
 }

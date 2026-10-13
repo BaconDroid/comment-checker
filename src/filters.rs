@@ -276,7 +276,10 @@ const CODE_KEYWORDS: &[&str] = &[
     "async ", "await ", "std::", "self.", "this.",
 ];
 
-const CODE_PUNCTUATION: &[&str] = &[";", "{", "}", "=>", ":=", "++", "--", "=="];
+/// Punctuation that, on its own, reads as code (arrows, compound operators, braces). `;`, `--` and
+/// `==` are deliberately absent: they are common in prose and in directive descriptions (`-- reason`,
+/// `; note`), so they cannot prove a line is commented-out code.
+const CODE_SHAPE_PUNCTUATION: &[&str] = &["=>", ":=", "++", "{", "}"];
 
 const COMMENT_MARKERS: &[&str] = &["//", "/*", "#", "--", "*"];
 
@@ -366,12 +369,19 @@ fn is_public_api_doc(comment: &CommentInfo) -> bool {
     markup && comment.comment_type == CommentType::Docstring
 }
 
+/// A line that reads as commented-out code: an assignment, an arrow/brace construct, or a statement
+/// keyword paired with code punctuation. A keyword or bare punctuation alone is not enough, so a
+/// directive description (`-- reason`, `; note`) or prose (`if you need…`) is not mistaken for code.
+fn is_code_shaped(stripped: &str) -> bool {
+    looks_like_assignment(stripped)
+        || any_contains(stripped, CODE_SHAPE_PUNCTUATION)
+        || (any_starts(stripped, CODE_KEYWORDS)
+            && any_contains(stripped, &[";", "(", ")", "=", ":"]))
+}
+
 fn is_commented_out_code(comment: &CommentInfo) -> bool {
     let text = normalized(comment);
-    let stripped = stripped_after_marker(&text);
-    any_starts(stripped, CODE_KEYWORDS)
-        || any_contains(stripped, CODE_PUNCTUATION)
-        || looks_like_assignment(stripped)
+    is_code_shaped(stripped_after_marker(&text))
 }
 
 fn is_vacuous_todo(comment: &CommentInfo) -> bool {
@@ -534,16 +544,20 @@ fn is_comment_line(line: &str) -> bool {
 }
 
 /// The nearest following code line, else the nearest preceding one, capped at 240 bytes.
-fn adjacent_code(lines: &[&str], line_number: usize) -> Option<String> {
+///
+/// `start_line` and `end_line` are the one-based inclusive line bounds of the comment, so a
+/// multi-line comment never searches inside its own text. (A Python docstring whose stored text is
+/// only its first line cannot supply a true end; the bound is then its first line.)
+fn adjacent_code(lines: &[&str], start_line: usize, end_line: usize) -> Option<String> {
     let following = lines
         .iter()
-        .skip(line_number)
+        .skip(end_line)
         .map(|line| line.trim())
         .find(|line| !line.is_empty() && !is_comment_line(line));
     let preceding = || {
         lines
             .iter()
-            .take(line_number.saturating_sub(1))
+            .take(start_line.saturating_sub(1))
             .rev()
             .map(|line| line.trim())
             .find(|line| !line.is_empty() && !is_comment_line(line))
@@ -576,17 +590,20 @@ fn operator_evidence(comment_text: &str, adjacent: &str) -> Option<String> {
 
 /// A cited reason for a comment that restates or narrates the code beside it, or `None`.
 fn restate_reason(comment: &CommentInfo, adjacent: &str) -> Option<String> {
+    // Mask literals once, so no sub-check can cite string contents: `log("a += b")` is not a
+    // restatement of a comment that says "increment".
+    let adjacent = mask_literals(adjacent);
     let comment_tokens = content_tokens(&comment.text);
     if comment_tokens.len() >= 2 {
-        let shared = containment(&comment_tokens, &raw_tokens(adjacent));
+        let shared = containment(&comment_tokens, &raw_tokens(&adjacent));
         if !shared.is_empty() && shared.len() * 2 >= comment_tokens.len() {
             return Some(format!("restates-code: {}", shared.join(", ")));
         }
     }
-    if let Some(evidence) = operator_evidence(&comment.text, adjacent) {
+    if let Some(evidence) = operator_evidence(&comment.text, &adjacent) {
         return Some(format!("restates-code: {evidence}"));
     }
-    if narrates_control_flow(&comment.text, adjacent) {
+    if narrates_control_flow(&comment.text, &adjacent) {
         return Some("narrates-control-flow".to_owned());
     }
     None
@@ -603,7 +620,9 @@ pub(crate) fn contextualize(comments: &mut [CommentInfo], content: &str, reliabl
         if comment.metadata.get("reason").map(String::as_str) != Some("unnecessary-comment") {
             continue;
         }
-        let Some(adjacent) = adjacent_code(&lines, comment.line_number) else {
+        let start = comment.line_number;
+        let end = start + comment.text.matches('\n').count();
+        let Some(adjacent) = adjacent_code(&lines, start, end) else {
             continue;
         };
         if let Some(reason) = restate_reason(comment, &adjacent) {

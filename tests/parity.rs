@@ -35,22 +35,7 @@ fn vectors() -> Result<Vectors, Box<dyn std::error::Error>> {
             .ok_or("missing vector field")?
             .to_string())
     };
-    let cases = section
-        .get("cases")
-        .and_then(serde_json::Value::as_array)
-        .map(|array| {
-            array
-                .iter()
-                .filter_map(|case| {
-                    Some(Case {
-                        name: case.get("name")?.as_str()?.to_string(),
-                        input: case.get("input")?.as_str()?.to_string(),
-                        exit: i32::try_from(case.get("exit")?.as_i64()?).ok()?,
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    let cases = parse_cases(section)?;
     Ok(Vectors {
         prefix: field("prefix")?,
         placeholder: field("placeholder")?,
@@ -59,6 +44,40 @@ fn vectors() -> Result<Vectors, Box<dyn std::error::Error>> {
         trigger: field("trigger")?,
         cases,
     })
+}
+
+/// Parse the `cases` array, failing loudly on a malformed entry or a missing/empty list, so the
+/// contract test can never pass by silently running zero cases.
+fn parse_cases(section: &serde_json::Value) -> Result<Vec<Case>, Box<dyn std::error::Error>> {
+    let array = section
+        .get("cases")
+        .and_then(serde_json::Value::as_array)
+        .ok_or("vectors section has no `cases` array")?;
+    if array.is_empty() {
+        return Err("vectors section `cases` array is empty".into());
+    }
+    let mut cases = Vec::with_capacity(array.len());
+    for case in array {
+        let name = case
+            .get("name")
+            .and_then(serde_json::Value::as_str)
+            .ok_or("a case is missing `name`")?;
+        let input = case
+            .get("input")
+            .and_then(serde_json::Value::as_str)
+            .ok_or("a case is missing `input`")?;
+        let exit = case
+            .get("exit")
+            .and_then(serde_json::Value::as_i64)
+            .ok_or("a case is missing `exit`")?;
+        let exit = i32::try_from(exit).map_err(|_| "a case `exit` is out of i32 range")?;
+        cases.push(Case {
+            name: name.to_string(),
+            input: input.to_string(),
+            exit,
+        });
+    }
+    Ok(cases)
 }
 
 fn run(input: &str, args: &[&str]) -> Result<Output, Box<dyn std::error::Error>> {

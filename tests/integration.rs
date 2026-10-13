@@ -194,6 +194,23 @@ fn write_literal_payload_is_not_cited() {
 }
 
 #[test]
+fn write_adjacent_code_skips_the_comment_body() {
+    // given: a block comment whose continuation lines are not marker-prefixed, then the code
+    let input = r#"{"tool_name":"Write","tool_input":{"file_path":"a.c","content":"/*\nincrement the counter\n*/\ncounter += 1;\n"}}"#;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        result.message.contains("reason=\"restates-code: counter\""),
+        "message: {}",
+        result.message
+    );
+}
+
+#[test]
 fn write_plain_comment_keeps_the_generic_reason() {
     // given: a comment with nothing in common with the code beside it
     let input = r#"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"print(1)\n# fetch the user record\n"}}"#;
