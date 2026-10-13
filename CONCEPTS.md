@@ -13,10 +13,13 @@ reported — it only tells the reader and the agent what to do about it.
 
 ## Evidence
 
-A contextual verdict must be able to cite the thing it condemns. `comment-checker` publishes
-`RestateEvidence` (the comment tokens that also appear in adjacent code, and verb→operator pairs);
-a verdict that cannot cite verified evidence is **not** emitted as a contextual one — the comment
-falls back to its text-level reason. This keeps the message checkable instead of a bare accusation.
+A contextual verdict must be able to cite the thing it condemns. `comment-checker` cites the evidence
+in the comment's `reason`: the tokens a comment shares with adjacent code, or a verb→operator pair
+(`restates-code: increment +=`), plus the flow narration it names (`narrates-control-flow`). A verdict
+that cannot cite such evidence is **not** emitted as a contextual one — the comment keeps its
+text-level reason. Evidence is cited only from a trustworthy context (a whole-file `Write`); an
+`Edit`/`MultiEdit` fragment keeps the text-level reason. This keeps the message checkable instead of a
+bare accusation.
 
 ## Unreliable context
 
