@@ -12,6 +12,13 @@ struct Vectors {
     element_open: String,
     clean: String,
     trigger: String,
+    cases: Vec<Case>,
+}
+
+struct Case {
+    name: String,
+    input: String,
+    exit: i32,
 }
 
 fn vectors() -> Result<Vectors, Box<dyn std::error::Error>> {
@@ -28,12 +35,29 @@ fn vectors() -> Result<Vectors, Box<dyn std::error::Error>> {
             .ok_or("missing vector field")?
             .to_string())
     };
+    let cases = section
+        .get("cases")
+        .and_then(serde_json::Value::as_array)
+        .map(|array| {
+            array
+                .iter()
+                .filter_map(|case| {
+                    Some(Case {
+                        name: case.get("name")?.as_str()?.to_string(),
+                        input: case.get("input")?.as_str()?.to_string(),
+                        exit: i32::try_from(case.get("exit")?.as_i64()?).ok()?,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     Ok(Vectors {
         prefix: field("prefix")?,
         placeholder: field("placeholder")?,
         element_open: field("element_open")?,
         clean: field("clean")?,
         trigger: field("trigger")?,
+        cases,
     })
 }
 
@@ -141,5 +165,21 @@ fn unknown_positional_arguments_are_ignored() -> TestResult {
         "stderr: {}",
         stderr(&output)
     );
+    Ok(())
+}
+
+#[test]
+fn declared_contract_cases_exit_as_specified() -> TestResult {
+    let v = vectors()?;
+    for case in &v.cases {
+        let output = run(&case.input, &[])?;
+        assert_eq!(
+            output.status.code(),
+            Some(case.exit),
+            "case {}: stderr {}",
+            case.name,
+            stderr(&output)
+        );
+    }
     Ok(())
 }
