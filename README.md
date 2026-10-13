@@ -162,6 +162,11 @@ use `{{comments}}` placeholder to insert the detected comments XML. if omitted, 
 }
 ```
 
+## strip
+
+`--strip` is accepted for forward compatibility but is **inert**: findings are reported exactly as
+without the flag, and the file is never rewritten.
+
 ## philosophy
 
 > "Code is like humor. When you have to explain it, it's bad." - Cory House

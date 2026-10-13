@@ -9,6 +9,12 @@ pub fn run_from_env() -> i32 {
         return 0;
     }
     let options = parse_options(&arguments);
+    if options.strip {
+        eprintln!(
+            "[{}] --strip is inert; findings are reported but the file is never rewritten.",
+            env!("CARGO_PKG_NAME"),
+        );
+    }
     let result = check_hook_input_from_reader(std::io::stdin().lock(), &options);
     eprint!("{}", result.message);
     result.exit_code

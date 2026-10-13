@@ -111,20 +111,27 @@ where
     Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
 }
 
-/// Parsed hook options shared by both repos. `min_confidence` is only meaningful for a repo whose
-/// findings carry a confidence (currently test-checker); others ignore it.
+/// Parsed hook options shared by both repos.
+///
+/// `min_confidence` is only meaningful for a repo whose findings carry a confidence (currently
+/// test-checker); others ignore it. `strip` is accepted but inert (α): the flag never rewrites the
+/// file.
 #[derive(Clone, Debug, Default)]
 pub struct Options {
     pub prompt: String,
     pub min_confidence: Option<String>,
+    pub strip: bool,
 }
 
-/// Hand-rolled argument parser: `--prompt <text>` / `--prompt=<text>` and
-/// `--min-confidence <level>` / `--min-confidence=<level>`; every other argument is ignored.
+/// Hand-rolled argument parser.
+///
+/// Recognises `--prompt <text>` / `--prompt=<text>`, `--min-confidence <level>` /
+/// `--min-confidence=<level>`, and the inert `--strip`; every other argument is ignored.
 #[must_use]
 pub fn parse_options(arguments: &[String]) -> Options {
     let mut prompt = String::new();
     let mut min_confidence = None;
+    let mut strip = false;
     let mut index = 0;
     while index < arguments.len() {
         let argument = arguments[index].as_str();
@@ -142,12 +149,15 @@ pub fn parse_options(arguments: &[String]) -> Options {
                 min_confidence = Some(value.clone());
                 index += 1;
             }
+        } else if argument == "--strip" {
+            strip = true;
         }
         index += 1;
     }
     Options {
         prompt,
         min_confidence,
+        strip,
     }
 }
 

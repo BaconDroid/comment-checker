@@ -114,3 +114,17 @@ fn cli_given_version_prints_name_and_version() -> std::io::Result<()> {
     );
     Ok(())
 }
+
+#[test]
+fn cli_given_strip_is_inert_and_still_reports() -> std::io::Result<()> {
+    // given: a trigger payload with the inert --strip flag
+    let input = r##"{"tool_name":"Write","tool_input":{"file_path":"test.py","content":"# comment\nprint(1)"}}"##;
+
+    // when
+    let output = run_checker(input, &["--strip"])?;
+
+    // then
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("inert"));
+    Ok(())
+}
