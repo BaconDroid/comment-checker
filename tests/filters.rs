@@ -383,3 +383,122 @@ fn apply_filters_spares_justifications_and_flags_proven_smells() {
         }
     }
 }
+
+#[derive(serde::Deserialize)]
+struct Case {
+    text: String,
+    comment_type: String,
+    expected: String,
+}
+
+fn corpus() -> Result<Vec<Case>, Box<dyn std::error::Error>> {
+    let raw = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/eval/corpus.json"))?;
+    Ok(serde_json::from_str(&raw)?)
+}
+
+fn predict(case: &Case) -> String {
+    let comment_type = match case.comment_type.as_str() {
+        "docstring" => CommentType::Docstring,
+        "block" => CommentType::Block,
+        _ => CommentType::Line,
+    };
+    let comment = CommentInfo::new(
+        case.text.clone(),
+        1,
+        "a.py",
+        comment_type,
+        comment_type == CommentType::Docstring,
+    );
+    match apply_filters(&[comment]).into_iter().next() {
+        None => "spared".to_owned(),
+        Some(kept) => kept
+            .metadata
+            .get("reason")
+            .cloned()
+            .unwrap_or_else(|| "unnecessary-comment".to_owned()),
+    }
+}
+
+/// The per-kind floor test in `CONCEPTS.md`: a kind with enough ground-truth cases must clear it.
+/// A kind that never fires scores zero, not a vacuous perfect.
+#[allow(clippy::cast_precision_loss)]
+fn floor_violations(cases: &[Case]) -> Vec<String> {
+    const MIN_BUCKET: usize = 2;
+    const FLOOR: f64 = 0.5;
+
+    let mut predicted: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
+    let mut actual: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    let mut correct: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    for case in cases {
+        let got = predict(case);
+        *predicted.entry(got.clone()).or_default() += 1;
+        *actual.entry(case.expected.clone()).or_default() += 1;
+        if got == case.expected {
+            *correct.entry(case.expected.clone()).or_default() += 1;
+        }
+    }
+
+    let mut violations = Vec::new();
+    for (kind, truth) in &actual {
+        if *truth < MIN_BUCKET {
+            continue;
+        }
+        let assigned = predicted.get(kind).copied().unwrap_or(0);
+        let hit = correct.get(kind).copied().unwrap_or(0);
+        let precision = if assigned == 0 {
+            0.0
+        } else {
+            hit as f64 / assigned as f64
+        };
+        let recall = hit as f64 / *truth as f64;
+        if precision < FLOOR || recall < FLOOR {
+            violations.push(format!(
+                "{kind}: precision {precision:.2}, recall {recall:.2}"
+            ));
+        }
+    }
+    violations
+}
+
+#[test]
+fn corpus_clears_the_per_kind_floor() -> Result<(), Box<dyn std::error::Error>> {
+    // given
+    let cases = corpus()?;
+
+    // when
+    let violations = floor_violations(&cases);
+
+    // then
+    assert!(
+        violations.is_empty(),
+        "per-kind floor violated: {violations:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn per_kind_floor_trips_on_a_kind_level_regression() {
+    // given: a kind whose predictions all disagree with its ground truth
+    let cases = vec![
+        Case {
+            text: "# x = 1;".to_owned(),
+            comment_type: "line".to_owned(),
+            expected: "vacuous-todo".to_owned(),
+        },
+        Case {
+            text: "# x = 2;".to_owned(),
+            comment_type: "line".to_owned(),
+            expected: "vacuous-todo".to_owned(),
+        },
+    ];
+
+    // when
+    let violations = floor_violations(&cases);
+
+    // then
+    assert!(
+        !violations.is_empty(),
+        "the floor must catch a kind-level regression"
+    );
+}
