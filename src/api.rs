@@ -168,9 +168,14 @@ fn evaluate(
         return success();
     }
 
-    let filtered = apply_filters(&comments);
+    let mut filtered = apply_filters(&comments);
     if filtered.is_empty() {
         return success();
+    }
+
+    // A whole-file Write gives trustworthy neighbours; an Edit/MultiEdit fragment does not.
+    if hook_input.tool_name.as_str() == "Write" {
+        crate::filters::contextualize(&mut filtered, get_content_to_check(hook_input), true);
     }
 
     HookCheckResult::block(format_hook_message(&filtered, custom_prompt))

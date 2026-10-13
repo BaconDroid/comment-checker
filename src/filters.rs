@@ -418,6 +418,147 @@ fn is_spared(comment: &CommentInfo) -> bool {
     DirectiveFilter.should_skip(comment) || SuppressionFilter.should_skip(comment)
 }
 
+// --- contextual evidence ------------------------------------------------------------------------
+//
+// When the parser saw the whole file a comment can be checked against the code next to it, and a
+// restatement or a control-flow narration can cite what it repeats. A fragment (Edit/MultiEdit) has
+// no trustworthy neighbours, so no citation is emitted there.
+
+const STOP_WORDS: &[&str] = &[
+    "the", "a", "an", "and", "or", "of", "to", "in", "is", "are", "for", "with", "this", "that",
+    "it", "we", "be", "as", "on", "at", "by", "from", "into", "then", "when", "while",
+];
+
+const FLOW_VERBS: &[&str] = &[
+    "loop",
+    "loops",
+    "iterate",
+    "iterates",
+    "iterating",
+    "iteration",
+];
+
+const LOOP_CONSTRUCTS: &[&str] = &["for ", "for(", "while ", "while(", "foreach"];
+
+/// Blank the payload of `"…"`/`'…'` literals so a citation never quotes literal content.
+fn mask_literals(text: &str) -> String {
+    let mut output = String::with_capacity(text.len());
+    let mut quote: Option<char> = None;
+    for character in text.chars() {
+        match quote {
+            Some(open) if character == open => {
+                quote = None;
+                output.push(character);
+            }
+            Some(_) => output.push(' '),
+            None if character == '"' || character == '\'' => {
+                quote = Some(character);
+                output.push(character);
+            }
+            None => output.push(character),
+        }
+    }
+    output
+}
+
+fn raw_tokens(text: &str) -> Vec<String> {
+    mask_literals(text)
+        .to_lowercase()
+        .split(|character: char| !character.is_alphanumeric() && character != '_')
+        .filter(|token| token.len() >= 3 && !STOP_WORDS.contains(token))
+        .map(str::to_owned)
+        .collect()
+}
+
+/// Tokens of a comment's prose (marker stripped).
+fn content_tokens(text: &str) -> Vec<String> {
+    raw_tokens(stripped_after_marker(text))
+}
+
+/// The comment's tokens that also appear in the adjacent code, in comment order, deduplicated.
+fn containment(comment_tokens: &[String], adjacent_tokens: &[String]) -> Vec<String> {
+    let mut shared: Vec<String> = Vec::new();
+    for token in comment_tokens {
+        if adjacent_tokens.iter().any(|candidate| candidate == token)
+            && !shared.iter().any(|seen| seen == token)
+        {
+            shared.push(token.clone());
+        }
+    }
+    shared
+}
+
+fn narrates_control_flow(comment_text: &str, adjacent: &str) -> bool {
+    let text = stripped_after_marker(comment_text).to_lowercase();
+    let opens_with_verb = FLOW_VERBS.iter().any(|verb| text.starts_with(verb));
+    opens_with_verb
+        && LOOP_CONSTRUCTS
+            .iter()
+            .any(|construct| adjacent.to_lowercase().contains(construct))
+}
+
+fn is_comment_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    COMMENT_MARKERS
+        .iter()
+        .any(|marker| trimmed.starts_with(marker))
+}
+
+/// The nearest following code line, else the nearest preceding one, capped at 240 bytes.
+fn adjacent_code(lines: &[&str], line_number: usize) -> Option<String> {
+    let following = lines
+        .iter()
+        .skip(line_number)
+        .map(|line| line.trim())
+        .find(|line| !line.is_empty() && !is_comment_line(line));
+    let preceding = || {
+        lines
+            .iter()
+            .take(line_number.saturating_sub(1))
+            .rev()
+            .map(|line| line.trim())
+            .find(|line| !line.is_empty() && !is_comment_line(line))
+    };
+    following
+        .or_else(preceding)
+        .map(|line| line.chars().take(240).collect())
+}
+
+/// A cited reason for a comment that restates or narrates the code beside it, or `None`.
+fn restate_reason(comment: &CommentInfo, adjacent: &str) -> Option<String> {
+    let comment_tokens = content_tokens(&comment.text);
+    if comment_tokens.len() >= 2 {
+        let shared = containment(&comment_tokens, &raw_tokens(adjacent));
+        if !shared.is_empty() && shared.len() * 2 >= comment_tokens.len() {
+            return Some(format!("restates-code: {}", shared.join(", ")));
+        }
+    }
+    if narrates_control_flow(&comment.text, adjacent) {
+        return Some("narrates-control-flow".to_owned());
+    }
+    None
+}
+
+/// Refine a generic reason with cited evidence from adjacent code. `reliable` is false for an
+/// Edit/MultiEdit fragment, where the context cannot vouch for a verdict, so nothing is emitted.
+pub(crate) fn contextualize(comments: &mut [CommentInfo], content: &str, reliable: bool) {
+    if !reliable {
+        return;
+    }
+    let lines: Vec<&str> = content.lines().collect();
+    for comment in comments.iter_mut() {
+        if comment.metadata.get("reason").map(String::as_str) != Some("unnecessary-comment") {
+            continue;
+        }
+        let Some(adjacent) = adjacent_code(&lines, comment.line_number) else {
+            continue;
+        };
+        if let Some(reason) = restate_reason(comment, &adjacent) {
+            comment.metadata.insert("reason".to_owned(), reason);
+        }
+    }
+}
+
 #[must_use]
 pub fn apply_filters(comments: &[CommentInfo]) -> Vec<CommentInfo> {
     comments

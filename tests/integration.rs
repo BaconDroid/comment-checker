@@ -156,3 +156,56 @@ fn full_pipeline_given_regular_comment_is_not_agent_memo() {
     assert_eq!(filtered.len(), 1);
     assert!(!agent_memo_filter.is_agent_memo(&filtered[0]));
 }
+
+use comment_checker::api::check_hook_input;
+
+#[test]
+fn write_restating_comment_cites_evidence() {
+    // given: a comment that restates the code beside it, in a whole-file Write
+    let input = r#"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"counter += 1\n# increment the counter\n"}}"#;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        result.message.contains("reason=\"restates-code: counter\""),
+        "message: {}",
+        result.message
+    );
+}
+
+#[test]
+fn write_plain_comment_keeps_the_generic_reason() {
+    // given: a comment with nothing in common with the code beside it
+    let input = r#"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"print(1)\n# fetch the user record\n"}}"#;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        result.message.contains("reason=\"unnecessary-comment\""),
+        "message: {}",
+        result.message
+    );
+}
+
+#[test]
+fn write_control_flow_narration_is_named() {
+    // given: a comment that names the loop the code already shows
+    let input = r##"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"# loop over the items\nfor item in items:\n    pass\n"}}"##;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        result.message.contains("reason=\"narrates-control-flow\""),
+        "message: {}",
+        result.message
+    );
+}
