@@ -5,6 +5,16 @@ use crate::engine::parse_options;
 pub fn run_from_env() -> i32 {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     let options = parse_options(&arguments);
+    if options.version {
+        println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+        return 0;
+    }
+    if options.strip {
+        eprintln!(
+            "[{}] --strip is inert; findings are reported but the file is never rewritten.",
+            env!("CARGO_PKG_NAME"),
+        );
+    }
     let result = check_hook_input_from_reader(std::io::stdin().lock(), &options);
     eprint!("{}", result.message);
     result.exit_code

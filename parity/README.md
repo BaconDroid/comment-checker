@@ -9,7 +9,7 @@ explicit and enforceable:
   trigger inputs.
 - `check.py` — clones (or reads) the sibling repo, normalizes names, and fails on any divergence in
   the shared surface: build/config files, `.github/**` (CI, release, scripts), `npm/**`, `src/cli.rs`,
-  `src/main.rs`, this directory, and `tests/parity.rs`.
+  `src/engine.rs`, `src/main.rs`, this directory, and `tests/parity.rs`.
 
 The domain layer (`rules`/`detector`/`filters`/`models`/`output`/`api`, `README`, `AGENTS`) is
 intentionally excluded — that is where the two projects differ.

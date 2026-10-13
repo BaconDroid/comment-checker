@@ -1,0 +1,16 @@
+comment-checker
+Copyright (c) comment-checker contributors
+
+This product includes software developed by systemfsoftware
+(https://github.com/systemfsoftware/comment-checker), licensed under the
+Apache License, Version 2.0.
+
+The comment classifier in `src/filters.rs` — the justification allow-list
+(license header, generated file, public-API doc, non-obvious intent,
+attribution) and the code-smell kind labels (`commented-out-code`,
+`vacuous-todo`) — is a reimplementation of, and derived from reading, the
+classifier tables and predicates in that project's `src/classify.rs`.
+
+That upstream project ships no NOTICE file; this file records the attribution
+obligation. The Apache-2.0 license text is available at
+https://www.apache.org/licenses/LICENSE-2.0

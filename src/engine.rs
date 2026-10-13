@@ -55,6 +55,7 @@ pub(crate) fn comment_query(name: &str) -> &'static str {
     match name {
         "rust" | "java" | "elm" | "groovy" => "(line_comment) @comment\n(block_comment) @comment",
         "kotlin" => "(line_comment) @comment\n(multiline_comment) @comment",
+        "zig" => "(line_comment) @comment",
         _ => "(comment) @comment",
     }
 }
@@ -111,20 +112,31 @@ where
     Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
 }
 
-/// Parsed hook options shared by both repos. `min_confidence` is only meaningful for a repo whose
-/// findings carry a confidence (currently test-checker); others ignore it.
+/// Parsed hook options shared by both repos.
+///
+/// `min_confidence` is only meaningful for a repo whose findings carry a confidence (currently
+/// test-checker); others ignore it. `strip` is accepted but inert (α): the flag never rewrites the
+/// file.
 #[derive(Clone, Debug, Default)]
 pub struct Options {
     pub prompt: String,
     pub min_confidence: Option<String>,
+    pub strip: bool,
+    pub version: bool,
 }
 
-/// Hand-rolled argument parser: `--prompt <text>` / `--prompt=<text>` and
-/// `--min-confidence <level>` / `--min-confidence=<level>`; every other argument is ignored.
+/// Hand-rolled argument parser.
+///
+/// Recognises `--prompt <text>` / `--prompt=<text>`, `--min-confidence <level>` /
+/// `--min-confidence=<level>`, the inert `--strip`, and `--version`; every other argument is
+/// ignored. A value consumed by `--prompt`/`--min-confidence` is never read as a flag, so
+/// `--prompt --version` sets the prompt instead of printing the version.
 #[must_use]
 pub fn parse_options(arguments: &[String]) -> Options {
     let mut prompt = String::new();
     let mut min_confidence = None;
+    let mut strip = false;
+    let mut version = false;
     let mut index = 0;
     while index < arguments.len() {
         let argument = arguments[index].as_str();
@@ -142,12 +154,18 @@ pub fn parse_options(arguments: &[String]) -> Options {
                 min_confidence = Some(value.clone());
                 index += 1;
             }
+        } else if argument == "--strip" {
+            strip = true;
+        } else if argument == "--version" {
+            version = true;
         }
         index += 1;
     }
     Options {
         prompt,
         min_confidence,
+        strip,
+        version,
     }
 }
 
