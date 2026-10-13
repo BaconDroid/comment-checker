@@ -113,6 +113,10 @@ everything it does flag is labelled with a `reason` attribute on the comment ele
 a marker is not an acquittal: a `# noqa` directive or the `comment-checker: allow` opt-out does not
 excuse a comment whose body is commented-out code or a vacuous `TODO`.
 
+see [`CONCEPTS.md`](CONCEPTS.md) for the shared vocabulary (verdict, reason, evidence, unreliable,
+floor, and the difference between fail-open and a silent pass), and [`NOTICE`](NOTICE) for upstream
+attribution.
+
 ## 30+ languages
 
 python, go, typescript, javascript, rust, c, c++, java, ruby, php, swift, kotlin, scala, elixir, and more.
