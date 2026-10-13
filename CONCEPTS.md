@@ -25,9 +25,14 @@ bare accusation.
 
 A `Write` gives the whole file, so a comment's neighbours are trustworthy. An `Edit`/`MultiEdit`
 gives only a fragment, so the surrounding code a comment appears to restate may be missing or
-misplaced. That context is **unreliable**: context-dependent rules must not convict on it. Purely
-textual rules (a `TODO`, commented-out code, a skip marker) still apply, because they need no
-context to be true.
+misplaced. That context is **unreliable**: context-dependent verdicts must not be emitted on it. In
+practice the contextual kind (`restates-code`, `narrates-control-flow`) is simply not emitted there;
+the comment is still reported on its text-level reason. Purely textual rules (a `TODO`,
+commented-out code, a skip marker) still apply, because they need no context to be true.
+
+`comment-checker` reports every comment that is neither justified nor proven benign, and a kind
+refines *why* it is reported — it does not gate whether it is. A repo may instead report only the
+kinds it can prove; the choice is a product decision, recorded here so the two hooks do not drift.
 
 ## Floor
 
