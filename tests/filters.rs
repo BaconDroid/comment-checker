@@ -352,6 +352,8 @@ fn apply_filters_spares_justifications_and_flags_proven_smells() {
             Some("agent-memo"),
         ),
         ("# x = 1;", CommentType::Line, Some("commented-out-code")),
+        // regression: a compact assignment (no spaces) is still commented-out code
+        ("# x=1", CommentType::Line, Some("commented-out-code")),
         (
             "# TODO: refactor later",
             CommentType::Line,

@@ -211,6 +211,23 @@ fn write_adjacent_code_skips_the_comment_body() {
 }
 
 #[test]
+fn write_escaped_quote_literal_is_not_cited() {
+    // given: an operator inside a string that also contains an escaped quote
+    let input = r#"{"tool_name":"Write","tool_input":{"file_path":"a.js","content":"// increment it\nlog(\"a \\\" += b\");\n"}}"#;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        !result.message.contains("restates-code"),
+        "an operator inside a literal must not be cited: {}",
+        result.message
+    );
+}
+
+#[test]
 fn write_plain_comment_keeps_the_generic_reason() {
     // given: a comment with nothing in common with the code beside it
     let input = r#"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"print(1)\n# fetch the user record\n"}}"#;

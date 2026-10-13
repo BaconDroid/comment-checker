@@ -319,16 +319,39 @@ fn leads_with_contract_markup(text: &str) -> bool {
     any_starts(stripped, DOC_MARKUP) || any_starts(stripped, CONTRACT_LEAD_EXTRAS)
 }
 
-/// True when the text is shaped like an assignment statement: a bare identifier path, then ` = `,
-/// then a value. Deliberately narrow, so prose containing an `=` is not mistaken for code.
+/// True when the text is shaped like an assignment: a bare identifier path, then a single `=`
+/// (spaced or compact), then a value. A comparison or compound operator (`==`, `!=`, `<=`, `+=`,
+/// `:=`, …) is not an assignment, and prose is rejected by the path-shaped left side.
 fn looks_like_assignment(text: &str) -> bool {
-    let Some((lhs, rhs)) = text.split_once(" = ") else {
+    let bytes = text.as_bytes();
+    let Some(index) = (0..bytes.len()).find(|&index| {
+        bytes[index] == b'='
+            && bytes.get(index + 1).copied() != Some(b'=')
+            && !matches!(
+                (index > 0).then(|| bytes[index - 1]),
+                Some(
+                    b'=' | b'!'
+                        | b'<'
+                        | b'>'
+                        | b'+'
+                        | b'-'
+                        | b'*'
+                        | b'/'
+                        | b'%'
+                        | b'&'
+                        | b'|'
+                        | b'^'
+                        | b':'
+                )
+            )
+    }) else {
         return false;
     };
-    if rhs.trim().is_empty() {
+    let lhs = text[..index].trim();
+    let rhs = text[index + 1..].trim();
+    if rhs.is_empty() {
         return false;
     }
-    let lhs = lhs.trim();
     let path_char = |c: char| c.is_alphanumeric() || matches!(c, '_' | '.' | '[' | ']' | '*' | '&');
     let starts_path = lhs
         .chars()
@@ -479,15 +502,26 @@ const OPERATOR_TABLE: &[(&str, &[&str])] = &[
     ("halves", &["/ 2", "/2"]),
 ];
 
-/// Blank the payload of `"…"`/`'…'` literals so a citation never quotes literal content.
+/// Blank the payload of `"…"`/`'…'` literals so a citation never quotes literal content. A backslash
+/// escape keeps the following character inside the literal, so `"a \" += b"` is fully masked.
 fn mask_literals(text: &str) -> String {
     let mut output = String::with_capacity(text.len());
     let mut quote: Option<char> = None;
+    let mut escaped = false;
     for character in text.chars() {
+        if escaped {
+            escaped = false;
+            output.push(' ');
+            continue;
+        }
         match quote {
             Some(open) if character == open => {
                 quote = None;
                 output.push(character);
+            }
+            Some(_) if character == '\\' => {
+                escaped = true;
+                output.push(' ');
             }
             Some(_) => output.push(' '),
             None if character == '"' || character == '\'' => {
