@@ -11,6 +11,6 @@ Measured on this workstation (idle), release profile (`cargo build --release`), 
 The eight contract cases in `baseline.py` pass. Re-measure after any change to the detector, the
 classifier, or `TSLP_LANGUAGES`. (Runs vary by ~1 ms; earlier runs measured p95 8.74–9.85 ms.)
 
-`TSLP_LANGUAGES` grows the release binary: 31 languages = 53.8 MB, 34 (dart, haskell, r) = 59.4 MB
-(+10.3%). Startup cost is unchanged (p95 within ~1 ms), so the budget is a parse/hook budget, not a
-binary-size one.
+`TSLP_LANGUAGES` grows the release binary: 31 languages = 53.8 MB, 34 (dart, haskell, r) = 59.4 MB,
+35 (adds zig) = 60.2 MB (+11.9% over 31). Startup cost is unchanged within run-to-run noise (p95
+drifts by several ms when the machine is loaded), so this is a parse/hook budget, not a size one.
