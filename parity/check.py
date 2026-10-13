@@ -152,7 +152,17 @@ REQUIRED_MODULES = [
 MODULE_EXTRAS = {"comment-checker": set(), "test-checker": {"rules"}}
 
 # Required test-file stems (tests/*.rs) and per-repo extras.
-REQUIRED_TESTS = ["api", "cli", "detector", "filters", "integration", "models", "output", "parity"]
+REQUIRED_TESTS = [
+    "api",
+    "cli",
+    "detector",
+    "filters",
+    "integration",
+    "models",
+    "output",
+    "parity",
+    "readme_hook",
+]
 TEST_EXTRAS = {"comment-checker": set(), "test-checker": set()}
 
 CAMEL_CASE = re.compile(r"^[A-Z][A-Za-z0-9]*$")

@@ -50,7 +50,7 @@ add to `~/.claude/settings.json` (or `.claude/settings.json` in your project):
         "hooks": [
           {
             "type": "command",
-            "command": "comment-checker"
+            "command": "if command -v comment-checker >/dev/null 2>&1; then exec comment-checker; fi; cat >/dev/null; echo '[check-comments] did not run - nothing checked this write.' >&2; exit 1"
           }
         ]
       }
@@ -58,6 +58,12 @@ add to `~/.claude/settings.json` (or `.claude/settings.json` in your project):
   }
 }
 ```
+
+use the wrapper above, **not** a bare `comment-checker`. A bare command exits `127` without reading
+stdin when the binary is not on `PATH`, so the edit goes unchecked and you are never told — a silent
+pass. The wrapper resolves the binary, passes `0`/`2` through, and otherwise drains stdin (so a large
+payload never raises SIGPIPE) and exits `1` with `did not run`. `tests/readme_hook.rs` runs this exact
+command text, so weakening it (a bare command, `|| exit 0`, …) fails the build.
 
 done. now claude will think twice before leaving `// TODO: fix later` in your code.
 
@@ -114,6 +120,7 @@ if tree-sitter supports it, we support it. the production CLI is Rust.
 | code | meaning |
 |------|---------|
 | 0 | pass - no comments found or skipped |
+| 1 | the hook wrapper could not run the check (binary missing) - nothing was checked |
 | 2 | warning - problematic comments detected |
 
 ## custom prompt
