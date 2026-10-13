@@ -209,3 +209,22 @@ fn write_control_flow_narration_is_named() {
         result.message
     );
 }
+
+#[test]
+fn write_operator_restatement_cites_the_operator() {
+    // given: a comment whose verb maps to the operator the adjacent code uses
+    let input = r##"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"# increment it\ncounter += 1\n"}}"##;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        result
+            .message
+            .contains("reason=\"restates-code: increment +=\""),
+        "message: {}",
+        result.message
+    );
+}

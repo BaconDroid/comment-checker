@@ -440,6 +440,35 @@ const FLOW_VERBS: &[&str] = &[
 
 const LOOP_CONSTRUCTS: &[&str] = &["for ", "for(", "while ", "while(", "foreach"];
 
+/// (verb the comment uses, operators the code shows for it). A verb whose operator sits in the
+/// adjacent code is a restatement even when no content token overlaps.
+const OPERATOR_TABLE: &[(&str, &[&str])] = &[
+    ("increment", &["+=", "++"]),
+    ("increments", &["+=", "++"]),
+    ("incrementing", &["+=", "++"]),
+    ("decrement", &["-=", "--"]),
+    ("decrements", &["-=", "--"]),
+    ("decrementing", &["-=", "--"]),
+    ("assign", &["=", ":="]),
+    ("assigns", &["=", ":="]),
+    ("assigned", &["=", ":="]),
+    ("return", &["return"]),
+    ("returns", &["return"]),
+    ("returning", &["return"]),
+    ("add", &["+"]),
+    ("adds", &["+"]),
+    ("subtract", &["-"]),
+    ("subtracts", &["-"]),
+    ("multiply", &["*"]),
+    ("multiplies", &["*"]),
+    ("divide", &["/"]),
+    ("divides", &["/"]),
+    ("double", &["* 2", "*2"]),
+    ("doubles", &["* 2", "*2"]),
+    ("halve", &["/ 2", "/2"]),
+    ("halves", &["/ 2", "/2"]),
+];
+
 /// Blank the payload of `"…"`/`'…'` literals so a citation never quotes literal content.
 fn mask_literals(text: &str) -> String {
     let mut output = String::with_capacity(text.len());
@@ -524,6 +553,27 @@ fn adjacent_code(lines: &[&str], line_number: usize) -> Option<String> {
         .map(|line| line.chars().take(240).collect())
 }
 
+/// A verb in the comment whose operator appears in the adjacent code, as `"verb operator"`.
+fn operator_evidence(comment_text: &str, adjacent: &str) -> Option<String> {
+    let text = stripped_after_marker(comment_text).to_lowercase();
+    let words: Vec<&str> = text
+        .split(|character: char| !character.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .collect();
+    for &(verb, operators) in OPERATOR_TABLE {
+        if words.contains(&verb) {
+            if let Some(operator) = operators
+                .iter()
+                .copied()
+                .find(|operator| adjacent.contains(*operator))
+            {
+                return Some(format!("{verb} {operator}"));
+            }
+        }
+    }
+    None
+}
+
 /// A cited reason for a comment that restates or narrates the code beside it, or `None`.
 fn restate_reason(comment: &CommentInfo, adjacent: &str) -> Option<String> {
     let comment_tokens = content_tokens(&comment.text);
@@ -532,6 +582,9 @@ fn restate_reason(comment: &CommentInfo, adjacent: &str) -> Option<String> {
         if !shared.is_empty() && shared.len() * 2 >= comment_tokens.len() {
             return Some(format!("restates-code: {}", shared.join(", ")));
         }
+    }
+    if let Some(evidence) = operator_evidence(&comment.text, adjacent) {
+        return Some(format!("restates-code: {evidence}"));
     }
     if narrates_control_flow(&comment.text, adjacent) {
         return Some("narrates-control-flow".to_owned());
