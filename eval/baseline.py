@@ -37,7 +37,9 @@ BUDGET_P95_MS = 15.0
 
 
 def run(binary: Path, payload: str) -> subprocess.CompletedProcess[bytes]:
-    return subprocess.run(
+    # `binary` is this harness's own argument (a locally built executable), never untrusted input,
+    # so invoking it is the tool's purpose rather than a command-injection sink.
+    return subprocess.run(  # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
         [str(binary)], input=payload.encode(), capture_output=True, check=False
     )
 
