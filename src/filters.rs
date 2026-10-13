@@ -189,7 +189,8 @@ const INTENT_MARKERS: &[&str] = &[
     "why",
     "because",
     "workaround",
-    "note:",
+    // "note:" is deliberately absent: this repo's own `AgentMemoFilter` owns that phrase, so
+    // sparing it here would silently acquit an agent memo.
     "important:",
     "warning:",
     "caution:",
@@ -388,7 +389,9 @@ fn is_justified(comment: &CommentInfo) -> bool {
 
 /// A text-level smell proven by the comment's own body; a marker must not acquit it (D13).
 fn is_proven_smell(comment: &CommentInfo) -> bool {
-    is_commented_out_code(comment) || is_vacuous_todo(comment)
+    is_commented_out_code(comment)
+        || is_vacuous_todo(comment)
+        || AgentMemoFilter.is_agent_memo(comment)
 }
 
 fn reason_for(comment: &CommentInfo) -> &'static str {

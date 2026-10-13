@@ -23,6 +23,7 @@
   { "text": "# Modified to use X", "comment_type": "line", "expected": "agent-memo" },
   { "text": "// This implements Y", "comment_type": "line", "expected": "agent-memo" },
   { "text": "# old -> new", "comment_type": "line", "expected": "agent-memo" },
+  { "text": "# Note: this is important", "comment_type": "line", "expected": "agent-memo" },
 
   { "text": "# calculate the sum of values", "comment_type": "line", "expected": "unnecessary-comment" },
   { "text": "// fetch the user record", "comment_type": "line", "expected": "unnecessary-comment" }

@@ -345,6 +345,12 @@ fn apply_filters_spares_justifications_and_flags_proven_smells() {
             CommentType::Line,
             Some("agent-memo"),
         ),
+        // cc's own AgentMemoFilter owns "note:", so the sf intent marker must not acquit it
+        (
+            "# Note: this is important",
+            CommentType::Line,
+            Some("agent-memo"),
+        ),
         ("# x = 1;", CommentType::Line, Some("commented-out-code")),
         (
             "# TODO: refactor later",
