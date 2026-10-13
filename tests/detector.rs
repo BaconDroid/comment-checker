@@ -2,7 +2,7 @@ use comment_checker::detector::CommentDetector;
 use comment_checker::language::language_for_path;
 use comment_checker::models::CommentType;
 
-const SMOKE_CASES: [(&str, &str, &str, CommentType); 34] = [
+const SMOKE_CASES: [(&str, &str, &str, CommentType); 35] = [
     (
         "main.py",
         "# Python comment\nx = 1",
@@ -25,6 +25,12 @@ const SMOKE_CASES: [(&str, &str, &str, CommentType); 34] = [
         "main.r",
         "# R comment\nx <- 1",
         "R comment",
+        CommentType::Line,
+    ),
+    (
+        "main.zig",
+        "// Zig comment\npub fn main() void {}",
+        "Zig comment",
         CommentType::Line,
     ),
     (
@@ -391,7 +397,7 @@ fn detect_given_comment_inside_html_script_element_is_detected() {
     );
 }
 
-const CLEAN_CASES: [(&str, &str); 34] = [
+const CLEAN_CASES: [(&str, &str); 35] = [
     ("main.py", "x = 1\n"),
     ("main.go", "package main\n"),
     ("main.ts", "const x: number = 1;\n"),
@@ -426,6 +432,7 @@ const CLEAN_CASES: [(&str, &str); 34] = [
     ("main.dart", "void main() {}\n"),
     ("Main.hs", "main = pure ()\n"),
     ("main.r", "x <- 1\n"),
+    ("main.zig", "pub fn main() void {}\n"),
 ];
 
 #[test]

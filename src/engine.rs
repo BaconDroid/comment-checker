@@ -55,6 +55,7 @@ pub(crate) fn comment_query(name: &str) -> &'static str {
     match name {
         "rust" | "java" | "elm" | "groovy" => "(line_comment) @comment\n(block_comment) @comment",
         "kotlin" => "(line_comment) @comment\n(multiline_comment) @comment",
+        "zig" => "(line_comment) @comment",
         _ => "(comment) @comment",
     }
 }
