@@ -123,6 +123,7 @@ fn weakening_patterns_do_not_satisfy_the_missing_binary_contract() -> TestResult
     let path = path_without_the_binary()?;
     let weakenings = [
         format!("{name} || exit 0"),
+        format!("{name} || true"),
         name.to_string(),
         "cat >/dev/null; exit 0".to_string(),
     ];
