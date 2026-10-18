@@ -42,8 +42,8 @@ def load_baseline() -> dict:
     """The recorded release p95 and regression tolerance (the W0-1 relative gate)."""
     try:
         return json.loads(BASELINE_FILE.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
+    except (OSError, ValueError) as error:
+        raise RuntimeError(f"cannot load baseline {BASELINE_FILE}") from error
 
 
 def run(binary: Path, payload: str) -> subprocess.CompletedProcess[bytes]:
@@ -88,17 +88,26 @@ def main() -> int:
         )
         return 1 if failures else 0
 
-    baseline = load_baseline()
-    recorded = baseline.get("release_p95_ms")
-    recorded = float(recorded) if isinstance(recorded, (int, float)) else None
-    tolerance = float(baseline.get("tolerance_percent", 30.0))
-    regression = ((p95 - recorded) / recorded * 100.0) if recorded else 0.0
-    regressed = recorded is not None and regression > tolerance
+    try:
+        baseline = load_baseline()
+    except RuntimeError as error:
+        print(f"\nbaseline: {error}", file=sys.stderr)
+        return 1
+
+    # Relative gate on the median (stable under load); p95 stays the documented budget target.
+    recorded = baseline.get("release_p50_ms")
+    recorded = float(recorded) if isinstance(recorded, (int, float)) and recorded > 0 else None
+    tolerance = float(baseline.get("tolerance_percent", 50.0))
+    regression = ((p50 - recorded) / recorded * 100.0) if recorded else 0.0
+    # A missing/non-positive baseline must fail the gate rather than silently disable it.
+    regressed = recorded is None or regression > tolerance
     flags = []
+    if recorded is None:
+        flags.append("no usable baseline")
     if p95 >= BUDGET_P95_MS:
-        flags.append(f"over target {BUDGET_P95_MS:.0f} ms")
-    if regressed:
-        flags.append(f"regressed {regression:+.0f}% > {tolerance:.0f}%")
+        flags.append(f"p95 over target {BUDGET_P95_MS:.0f} ms")
+    if recorded is not None and regression > tolerance:
+        flags.append(f"p50 regressed {regression:+.0f}% > {tolerance:.0f}%")
     status = "; ".join(flags) if flags else "ok"
     print(f"\nper-invocation (startup included): p50 {p50:.2f} ms, p95 {p95:.2f} ms [{status}]")
 

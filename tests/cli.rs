@@ -126,6 +126,7 @@ fn cli_given_prompt_version_treats_it_as_a_prompt_value() -> std::io::Result<()>
     // then
     assert!(output.stdout.is_empty(), "the version must not be printed");
     assert_eq!(String::from_utf8_lossy(&output.stderr), "--version");
+    assert_eq!(output.status.code(), Some(2));
     Ok(())
 }
 
