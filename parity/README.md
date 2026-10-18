@@ -29,3 +29,13 @@ CI runs it as the `parity` job in `.github/workflows/ci.yml`.
 When a shared file changes, make the identical change in the sibling repo in the same wave. If a
 change is genuinely domain-specific, it does not belong in a shared file — move it behind the domain
 layer or add a `TOKENS` entry in `check.py` for a legitimate per-repo string.
+
+## Merge protocol
+
+`check.py` prints a short digest of each side's shared files and the sibling's commit, so a drift
+report names the exact sibling revision. When the two PRs are ready:
+
+1. Merge both PRs on the **same day**.
+2. Keep the working branch until **both** are merged — each CI clones the sibling by `PARITY_REF`.
+3. After both land, confirm `PARITY_REF` falls back to the default branch (`master`/`main`) and both
+   CI parity jobs pass there.
