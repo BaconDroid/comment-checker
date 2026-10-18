@@ -55,6 +55,22 @@ def run(binary: Path, payload: str) -> subprocess.CompletedProcess[bytes]:
     )
 
 
+RUN_INVOCATIONS = 210
+DISCARD_FIRST = 10
+
+
+def measure_once(binary: Path, payload: str) -> tuple[float, float]:
+    """One run: RUN_INVOCATIONS calls, discard the first DISCARD_FIRST, return (median, p95) ms."""
+    samples = []
+    for _ in range(RUN_INVOCATIONS):
+        start = time.perf_counter()
+        run(binary, payload)
+        samples.append((time.perf_counter() - start) * 1000.0)
+    samples = samples[DISCARD_FIRST:]
+    samples.sort()
+    return statistics.median(samples), samples[int(len(samples) * 0.95)]
+
+
 def main() -> int:
     binary = (
         Path(sys.argv[1])
@@ -73,19 +89,22 @@ def main() -> int:
             failures += 1
         print(f"  [{status}] {name}: exit {result.returncode} (expected {expected})")
 
-    trigger = next(payload for name, payload, _ in CASES if name == "trigger")
-    samples = []
-    for _ in range(300):
-        start = time.perf_counter()
-        run(binary, trigger)
-        samples.append((time.perf_counter() - start) * 1000.0)
-    samples.sort()
-    p50 = statistics.median(samples)
-    p95 = samples[int(len(samples) * 0.95)]
-    if "debug" in binary.parts:
+    trigger = next(payload for name, payload, _ in CASES if name.startswith("trigger"))
+    profile = "debug" if "debug" in binary.parts else "release"
+    # Three runs; take the run with the lowest p95 to cut noise.
+    p50, p95 = min((measure_once(binary, trigger) for _ in range(3)), key=lambda pair: pair[1])
+
+    if "--record" in sys.argv:
+        baseline = load_baseline()
+        baseline.setdefault("profiles", {})[profile] = {"p95_ms": round(p95, 2)}
+        BASELINE_FILE.write_text(json.dumps(baseline, indent=2) + "\n", encoding="utf-8")
+        print(f"\nrecorded {profile} p95 {p95:.2f} ms in {BASELINE_FILE.name}")
+        return 1 if failures else 0
+
+    if profile == "debug":
         print(
             f"\nper-invocation (startup included): p50 {p50:.2f} ms, p95 {p95:.2f} ms "
-            "[debug profile: no gate]"
+            "[debug profile: not gated]"
         )
         return 1 if failures else 0
 
@@ -95,21 +114,21 @@ def main() -> int:
         print(f"\nbaseline: {error}", file=sys.stderr)
         return 1
 
-    # Relative gate on the median (stable under load); p95 stays the documented budget target.
-    recorded = baseline.get("release_p50_ms")
+    # Relative gate: fail when p95 regresses > tolerance vs the recorded baseline (per profile).
+    recorded = baseline.get("profiles", {}).get(profile, {}).get("p95_ms")
     recorded = (
         float(recorded)
         if isinstance(recorded, (int, float)) and math.isfinite(recorded) and recorded > 0
         else None
     )
-    tolerance = baseline.get("tolerance_percent", 50.0)
+    tolerance = baseline.get("tolerance_percent", 25.0)
     tolerance = (
         float(tolerance)
         if isinstance(tolerance, (int, float)) and math.isfinite(tolerance) and tolerance > 0
         else None
     )
-    regression = ((p50 - recorded) / recorded * 100.0) if recorded else 0.0
-    # A missing, non-positive, or non-finite baseline/tolerance must fail the gate, not disable it.
+    regression = ((p95 - recorded) / recorded * 100.0) if recorded else 0.0
+    # Fail-closed: a missing/invalid baseline or tolerance must fail, never disable the gate.
     regressed = recorded is None or tolerance is None or regression > tolerance
     flags = []
     if recorded is None:
@@ -119,7 +138,7 @@ def main() -> int:
     if p95 >= BUDGET_P95_MS:
         flags.append(f"p95 over target {BUDGET_P95_MS:.0f} ms")
     if recorded is not None and tolerance is not None and regression > tolerance:
-        flags.append(f"p50 regressed {regression:+.0f}% > {tolerance:.0f}%")
+        flags.append(f"p95 regressed {regression:+.0f}% > {tolerance:.0f}%")
     status = "; ".join(flags) if flags else "ok"
     print(f"\nper-invocation (startup included): p50 {p50:.2f} ms, p95 {p95:.2f} ms [{status}]")
 

@@ -1,16 +1,26 @@
 # Baseline
 
-Measured on this workstation (idle), release profile (`cargo build --release`), with
-`eval/baseline.py` — 300 invocations of the trigger payload, process startup included.
+Measured with `eval/baseline.py` on a **loaded** dev box (load average ~8, so the recorded numbers are
+inflated — re-record on an idle machine before relying on them).
 
-| metric | value   | budget        |
-| ------ | ------- | ------------- |
-| p50    | 6.16 ms | —             |
-| p95    | 8.08 ms | < 15 ms (met) |
+## Contract
 
-The eight contract cases in `baseline.py` pass. Re-measure after any change to the detector, the
-classifier, or `TSLP_LANGUAGES`. (Runs vary by ~1 ms; earlier runs measured p95 8.74–9.85 ms.)
+The exit-code cases in `baseline.py` pass: pass/skip exit `0`, findings exit `2`, and a
+malformed/empty payload fails open to `0` with a visible `[<tool>] Skipping:` line.
 
-`TSLP_LANGUAGES` grows the release binary: 31 languages = 53.8 MB, 34 (dart, haskell, r) = 59.4 MB,
-35 (adds zig) = 60.2 MB (+11.9% over 31). Startup cost is unchanged within run-to-run noise (p95
-drifts by several ms when the machine is loaded), so this is a parse/hook budget, not a size one.
+## Relative perf gate
+
+Each run is 210 invocations of the trigger payload (the first 10 are discarded); the harness takes the
+**lowest p95 of 3 runs** and **fails** when p95 regresses by more than **25 %** against
+`eval/baseline.json` (`profiles.<profile>.p95_ms`). It fails closed on a missing, non-positive, or
+non-finite baseline/tolerance. The 15 ms budget is a documented **target** — it prints a warning, not
+a failure.
+
+Re-record on an idle machine:
+
+```bash
+python3 eval/baseline.py target/release/comment-checker --record
+```
+
+Recorded (loaded): release p95 17.39 ms. Binary size: 31 languages ≈ 53.8 MB, 35 (dart/haskell/r/zig)
+≈ 60.2 MB (+11.9 %).
