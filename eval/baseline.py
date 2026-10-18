@@ -7,6 +7,7 @@ of the parity-locked suite.
 from __future__ import annotations
 
 import json
+import math
 import statistics
 import subprocess
 import sys
@@ -96,17 +97,28 @@ def main() -> int:
 
     # Relative gate on the median (stable under load); p95 stays the documented budget target.
     recorded = baseline.get("release_p50_ms")
-    recorded = float(recorded) if isinstance(recorded, (int, float)) and recorded > 0 else None
-    tolerance = float(baseline.get("tolerance_percent", 50.0))
+    recorded = (
+        float(recorded)
+        if isinstance(recorded, (int, float)) and math.isfinite(recorded) and recorded > 0
+        else None
+    )
+    tolerance = baseline.get("tolerance_percent", 50.0)
+    tolerance = (
+        float(tolerance)
+        if isinstance(tolerance, (int, float)) and math.isfinite(tolerance) and tolerance > 0
+        else None
+    )
     regression = ((p50 - recorded) / recorded * 100.0) if recorded else 0.0
-    # A missing/non-positive baseline must fail the gate rather than silently disable it.
-    regressed = recorded is None or regression > tolerance
+    # A missing, non-positive, or non-finite baseline/tolerance must fail the gate, not disable it.
+    regressed = recorded is None or tolerance is None or regression > tolerance
     flags = []
     if recorded is None:
         flags.append("no usable baseline")
+    if tolerance is None:
+        flags.append("no usable tolerance")
     if p95 >= BUDGET_P95_MS:
         flags.append(f"p95 over target {BUDGET_P95_MS:.0f} ms")
-    if recorded is not None and regression > tolerance:
+    if recorded is not None and tolerance is not None and regression > tolerance:
         flags.append(f"p50 regressed {regression:+.0f}% > {tolerance:.0f}%")
     status = "; ".join(flags) if flags else "ok"
     print(f"\nper-invocation (startup included): p50 {p50:.2f} ms, p95 {p95:.2f} ms [{status}]")
