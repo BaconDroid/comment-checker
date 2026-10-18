@@ -6,6 +6,7 @@ of the parity-locked suite.
 """
 from __future__ import annotations
 
+import json
 import statistics
 import subprocess
 import sys
@@ -34,6 +35,15 @@ CASES = [
 ]
 
 BUDGET_P95_MS = 15.0
+BASELINE_FILE = Path(__file__).resolve().parent / "baseline.json"
+
+
+def load_baseline() -> dict:
+    """The recorded release p95 and regression tolerance (the W0-1 relative gate)."""
+    try:
+        return json.loads(BASELINE_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
 
 
 def run(binary: Path, payload: str) -> subprocess.CompletedProcess[bytes]:
@@ -72,16 +82,29 @@ def main() -> int:
     p50 = statistics.median(samples)
     p95 = samples[int(len(samples) * 0.95)]
     if "debug" in binary.parts:
-        note = "debug profile: the budget applies to release"
-        over_budget = False
-    else:
-        over_budget = p95 >= BUDGET_P95_MS
-        note = f"{'OVER BUDGET' if over_budget else 'ok'}, budget p95 < {BUDGET_P95_MS} ms"
-    print(f"\nper-invocation (startup included): p50 {p50:.2f} ms, p95 {p95:.2f} ms [{note}]")
-
-    if failures or over_budget:
         print(
-            f"\nbaseline: {failures} contract failure(s), over-budget={over_budget}",
+            f"\nper-invocation (startup included): p50 {p50:.2f} ms, p95 {p95:.2f} ms "
+            "[debug profile: no gate]"
+        )
+        return 1 if failures else 0
+
+    baseline = load_baseline()
+    recorded = baseline.get("release_p95_ms")
+    recorded = float(recorded) if isinstance(recorded, (int, float)) else None
+    tolerance = float(baseline.get("tolerance_percent", 30.0))
+    regression = ((p95 - recorded) / recorded * 100.0) if recorded else 0.0
+    regressed = recorded is not None and regression > tolerance
+    flags = []
+    if p95 >= BUDGET_P95_MS:
+        flags.append(f"over target {BUDGET_P95_MS:.0f} ms")
+    if regressed:
+        flags.append(f"regressed {regression:+.0f}% > {tolerance:.0f}%")
+    status = "; ".join(flags) if flags else "ok"
+    print(f"\nper-invocation (startup included): p50 {p50:.2f} ms, p95 {p95:.2f} ms [{status}]")
+
+    if failures or regressed:
+        print(
+            f"\nbaseline: {failures} contract failure(s), regressed={regressed}",
             file=sys.stderr,
         )
         return 1

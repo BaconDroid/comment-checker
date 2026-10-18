@@ -19,6 +19,7 @@ struct Case {
     name: String,
     input: String,
     exit: i32,
+    stderr_contains: Option<String>,
 }
 
 fn vectors() -> Result<Vectors, Box<dyn std::error::Error>> {
@@ -71,10 +72,15 @@ fn parse_cases(section: &serde_json::Value) -> Result<Vec<Case>, Box<dyn std::er
             .and_then(serde_json::Value::as_i64)
             .ok_or("a case is missing `exit`")?;
         let exit = i32::try_from(exit).map_err(|_| "a case `exit` is out of i32 range")?;
+        let stderr_contains = case
+            .get("stderr_contains")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned);
         cases.push(Case {
             name: name.to_string(),
             input: input.to_string(),
             exit,
+            stderr_contains,
         });
     }
     Ok(cases)
@@ -199,6 +205,14 @@ fn declared_contract_cases_exit_as_specified() -> TestResult {
             case.name,
             stderr(&output)
         );
+        if let Some(needle) = &case.stderr_contains {
+            let text = stderr(&output);
+            assert!(
+                text.contains(needle),
+                "case {}: expected stderr to contain {needle:?}, got: {text}",
+                case.name
+            );
+        }
     }
     Ok(())
 }

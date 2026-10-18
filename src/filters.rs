@@ -678,3 +678,23 @@ pub fn apply_filters(comments: &[CommentInfo]) -> Vec<CommentInfo> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{INTENT_MARKERS, is_agent_memo_phrase};
+
+    /// Guard: a carried sf intent marker that is also an agent-memo phrase would silently acquit a
+    /// memo (the `note:` regression). Keep the two catalogs disjoint.
+    #[test]
+    fn intent_markers_do_not_overlap_agent_memo_phrases() {
+        let overlaps: Vec<&str> = INTENT_MARKERS
+            .iter()
+            .copied()
+            .filter(|marker| is_agent_memo_phrase(marker))
+            .collect();
+        assert!(
+            overlaps.is_empty(),
+            "intent markers also read as agent memos: {overlaps:?}"
+        );
+    }
+}

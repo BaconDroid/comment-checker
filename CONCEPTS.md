@@ -53,3 +53,16 @@ These are opposites and must not be confused:
 `comment-checker` and `test-checker` fail open on a payload they cannot read (exit `0` with a
 `Skipping:` line). The exit `1` "did not run" path belongs to the **wrapper**, never to the binary,
 and the wrapper is documented and gated by `tests/readme_hook.rs`.
+
+## Exit codes
+
+| code | meaning |
+| ---- | ------- |
+| `0` | pass, or a deliberate skip. A skip **always** prints a visible `[<tool>] Skipping: <reason>` line on stderr — never a silent exit. |
+| `2` | at least one finding remains after the confidence gate. |
+| `1` | **wrapper only**: the check did not run (binary missing, or an unexpected exit code). The binary itself never exits `1`. |
+
+The malformed / empty / unknown-tool / missing-path / unknown-extension cases all exit `0` **with**
+the visible skip line, and `tests/parity.rs` asserts that line from `parity/vectors.json`. Making a
+missing binary loud (exit `1`, "did not run") is the wrapper's job, so a broken install can never look
+like a clean pass.
