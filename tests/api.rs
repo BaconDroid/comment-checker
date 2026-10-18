@@ -119,3 +119,15 @@ fn check_hook_input_given_file_suppression_marker_skips() {
             .contains("Suppressed by comment-checker: allow")
     );
 }
+
+#[test]
+fn check_hook_input_given_unknown_tool_skips() {
+    // given: a non-edit tool, which the hook matcher (Write|Edit|MultiEdit) never sends
+    let input = r##"{"tool_name":"Read","tool_input":{"file_path":"test.py","content":"# comment\nprint(1)"}}"##;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 0);
+}

@@ -26,7 +26,13 @@ fn push_comments_xml_header(output: &mut String, file_path: &str) {
 fn push_comment_xml(output: &mut String, comment: &CommentInfo) {
     output.push_str("\t<comment line-number=\"");
     output.push_str(&comment.line_number.to_string());
-    output.push_str("\">");
+    output.push('"');
+    if let Some(reason) = comment.metadata.get("reason") {
+        output.push_str(" reason=\"");
+        engine::push_escaped_attribute(output, reason);
+        output.push('"');
+    }
+    output.push('>');
     engine::push_escaped_text(output, &comment.text);
     output.push_str("</comment>\n");
 }

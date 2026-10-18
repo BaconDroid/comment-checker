@@ -21,6 +21,24 @@ fn build_comments_xml_given_single_comment_returns_exact_shape() {
 }
 
 #[test]
+fn build_comments_xml_given_reason_metadata_emits_reason_attribute() {
+    // given
+    let mut comment = comment("# TODO: fix this", 10, "src/app.py");
+    comment
+        .metadata
+        .insert("reason".to_owned(), "vacuous-todo".to_owned());
+
+    // when
+    let result = build_comments_xml(&[comment], "src/app.py");
+
+    // then
+    assert_eq!(
+        result,
+        "<comments file=\"src/app.py\">\n\t<comment line-number=\"10\" reason=\"vacuous-todo\"># TODO: fix this</comment>\n</comments>",
+    );
+}
+
+#[test]
 fn build_comments_xml_given_empty_comments_returns_empty_string() {
     // given
     let comments = Vec::new();

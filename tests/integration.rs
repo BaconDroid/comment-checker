@@ -156,3 +156,126 @@ fn full_pipeline_given_regular_comment_is_not_agent_memo() {
     assert_eq!(filtered.len(), 1);
     assert!(!agent_memo_filter.is_agent_memo(&filtered[0]));
 }
+
+use comment_checker::api::check_hook_input;
+
+#[test]
+fn write_restating_comment_cites_evidence() {
+    // given: a comment that restates the code beside it, in a whole-file Write
+    let input = r#"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"counter += 1\n# increment the counter\n"}}"#;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        result.message.contains("reason=\"restates-code: counter\""),
+        "message: {}",
+        result.message
+    );
+}
+
+#[test]
+fn write_literal_payload_is_not_cited() {
+    // given: the only overlap is inside a string literal, which must be masked before citing
+    let input = r#"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"x = \"counter increment\"\n# counter increment\n"}}"#;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        !result.message.contains("restates-code"),
+        "a literal payload must not be cited: {}",
+        result.message
+    );
+}
+
+#[test]
+fn write_adjacent_code_skips_the_comment_body() {
+    // given: a block comment whose continuation lines are not marker-prefixed, then the code
+    let input = r#"{"tool_name":"Write","tool_input":{"file_path":"a.c","content":"/*\nincrement the counter\n*/\ncounter += 1;\n"}}"#;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        result.message.contains("reason=\"restates-code: counter\""),
+        "message: {}",
+        result.message
+    );
+}
+
+#[test]
+fn write_escaped_quote_literal_is_not_cited() {
+    // given: an operator inside a string that also contains an escaped quote
+    let input = r#"{"tool_name":"Write","tool_input":{"file_path":"a.js","content":"// increment it\nlog(\"a \\\" += b\");\n"}}"#;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        !result.message.contains("restates-code"),
+        "an operator inside a literal must not be cited: {}",
+        result.message
+    );
+}
+
+#[test]
+fn write_plain_comment_keeps_the_generic_reason() {
+    // given: a comment with nothing in common with the code beside it
+    let input = r#"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"print(1)\n# fetch the user record\n"}}"#;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        result.message.contains("reason=\"unnecessary-comment\""),
+        "message: {}",
+        result.message
+    );
+}
+
+#[test]
+fn write_control_flow_narration_is_named() {
+    // given: a comment that names the loop the code already shows
+    let input = r##"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"# loop over the items\nfor item in items:\n    pass\n"}}"##;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        result.message.contains("reason=\"narrates-control-flow\""),
+        "message: {}",
+        result.message
+    );
+}
+
+#[test]
+fn write_operator_restatement_cites_the_operator() {
+    // given: a comment whose verb maps to the operator the adjacent code uses
+    let input = r##"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"# increment it\ncounter += 1\n"}}"##;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        result
+            .message
+            .contains("reason=\"restates-code: increment +=\""),
+        "message: {}",
+        result.message
+    );
+}

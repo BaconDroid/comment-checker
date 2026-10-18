@@ -18,6 +18,7 @@ Usage:
 from __future__ import annotations
 
 import difflib
+import hashlib
 import os
 import re
 import shutil
@@ -152,7 +153,17 @@ REQUIRED_MODULES = [
 MODULE_EXTRAS = {"comment-checker": set(), "test-checker": {"rules"}}
 
 # Required test-file stems (tests/*.rs) and per-repo extras.
-REQUIRED_TESTS = ["api", "cli", "detector", "filters", "integration", "models", "output", "parity"]
+REQUIRED_TESTS = [
+    "api",
+    "cli",
+    "detector",
+    "filters",
+    "integration",
+    "models",
+    "output",
+    "parity",
+    "readme_hook",
+]
 TEST_EXTRAS = {"comment-checker": set(), "test-checker": set()}
 
 CAMEL_CASE = re.compile(r"^[A-Z][A-Za-z0-9]*$")
@@ -188,6 +199,32 @@ def shared_files(root: Path) -> dict[str, Path]:
 
 def read(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
+
+
+def shared_digest(files: dict[str, Path]) -> str:
+    """A short, order-independent digest of the shared-file contents (path + bytes)."""
+    digest = hashlib.sha256()
+    for relative in sorted(files):
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(files[relative].read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()[:12]
+
+
+def sibling_commit(root: Path) -> str:
+    """The sibling's HEAD commit, or "unknown" when it is not a git checkout."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return "unknown"
+    commit = result.stdout.strip()
+    return commit if result.returncode == 0 and commit else "unknown"
 
 
 def stems(directory: Path, suffix: str) -> set[str]:
@@ -313,6 +350,11 @@ def main() -> int:
     bootstrap = not (sibling / "parity").is_dir()
     local_files = shared_files(local)
     sibling_files = shared_files(sibling)
+    print(f"parity: local shared digest {shared_digest(local_files)}")
+    print(
+        f"parity: sibling shared digest {shared_digest(sibling_files)} "
+        f"(commit {sibling_commit(sibling)})"
+    )
 
     drift: list[str] = []
     for relative in sorted(set(local_files) | set(sibling_files)):
@@ -338,7 +380,10 @@ def main() -> int:
         subprocess.run(["rm", "-rf", str(temp_dir)], check=False)  # noqa: S603
 
     if drift:
-        print("parity drift detected between the two repos:")
+        print(
+            f"parity drift detected between the two repos "
+            f"(sibling {sibling_name} at {sibling_commit(sibling)}):"
+        )
         for report in drift:
             print()
             print(report)

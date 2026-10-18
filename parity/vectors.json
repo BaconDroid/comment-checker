@@ -4,13 +4,35 @@
     "placeholder": "{{comments}}",
     "element_open": "<comments",
     "clean": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"a.py\",\"content\":\"print(1)\"}}",
-    "trigger": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"a.py\",\"content\":\"# comment\\nprint(1)\"}}"
+    "trigger": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"a.py\",\"content\":\"# comment\\nprint(1)\"}}",
+    "cases": [
+      { "name": "malformed-json", "input": "not json", "exit": 0, "stderr_contains": "Skipping:" },
+      { "name": "empty-stdin", "input": "", "exit": 0, "stderr_contains": "Skipping:" },
+      { "name": "unknown-tool", "input": "{\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"a.py\",\"content\":\"# comment\\nprint(1)\"}}", "exit": 0, "stderr_contains": "Skipping:" },
+      { "name": "missing-file-path", "input": "{\"tool_name\":\"Write\",\"tool_input\":{\"content\":\"# c\"}}", "exit": 0, "stderr_contains": "Skipping:" },
+      { "name": "unknown-extension", "input": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"a.zzz\",\"content\":\"# c\"}}", "exit": 0, "stderr_contains": "Skipping:" },
+      { "name": "suppression-marker", "input": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"a.py\",\"content\":\"# comment-checker: allow\\n# x\\n\"}}", "exit": 0, "stderr_contains": "Skipping:" },
+      { "name": "null-fields", "input": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"a.py\",\"content\":\"print(1)\",\"old_string\":null,\"new_string\":null}}", "exit": 0 },
+      { "name": "crlf-content", "input": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"a.py\",\"content\":\"print(1)\\r\\n\"}}", "exit": 0 },
+      { "name": "multiedit-trigger", "input": "{\"tool_name\":\"MultiEdit\",\"tool_input\":{\"file_path\":\"a.py\",\"edits\":[{\"old_string\":\"x\",\"new_string\":\"# comment\\ny\"}]}}", "exit": 2 }
+    ]
   },
   "test-checker": {
     "prefix": "[test-checker]",
     "placeholder": "{{findings}}",
     "element_open": "<findings",
     "clean": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"tests/a_test.py\",\"content\":\"def test_a():\\n    assert x == 1\\n\"}}",
-    "trigger": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"tests/a_test.py\",\"content\":\"def test_a():\\n    @pytest.mark.skip\\n    assert x == 1\\n\"}}"
+    "trigger": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"tests/a_test.py\",\"content\":\"def test_a():\\n    @pytest.mark.skip\\n    assert x == 1\\n\"}}",
+    "cases": [
+      { "name": "malformed-json", "input": "not json", "exit": 0, "stderr_contains": "Skipping:" },
+      { "name": "empty-stdin", "input": "", "exit": 0, "stderr_contains": "Skipping:" },
+      { "name": "unknown-tool", "input": "{\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"tests/a_test.py\",\"content\":\"def test_a():\\n    @pytest.mark.skip\\n    assert x == 1\\n\"}}", "exit": 0, "stderr_contains": "Skipping:" },
+      { "name": "missing-file-path", "input": "{\"tool_name\":\"Write\",\"tool_input\":{\"content\":\"def test_a():\\n    assert x == 1\\n\"}}", "exit": 0, "stderr_contains": "Skipping:" },
+      { "name": "unknown-extension", "input": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"a.zzz\",\"content\":\"x\"}}", "exit": 0, "stderr_contains": "Skipping:" },
+      { "name": "null-fields", "input": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"tests/a_test.py\",\"content\":\"def test_a():\\n    assert x == 1\\n\",\"old_string\":null}}", "exit": 0 },
+      { "name": "crlf-content", "input": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"tests/a_test.py\",\"content\":\"def test_a():\\r\\n    assert x == 1\\r\\n\"}}", "exit": 0 },
+      { "name": "harness-gate", "input": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\".github/workflows/ci.yml\",\"content\":\"jobs:\\n  test:\\n    steps:\\n      - run: pytest || true\\n\"}}", "exit": 2 },
+      { "name": "multiedit-trigger", "input": "{\"tool_name\":\"MultiEdit\",\"tool_input\":{\"file_path\":\"tests/a_test.py\",\"edits\":[{\"old_string\":\"def test_a():\\n    assert x == 1\\n\",\"new_string\":\"def test_a():\\n    @pytest.mark.skip\\n    assert x == 1\\n\"}]}}", "exit": 2 }
+    ]
   }
 }

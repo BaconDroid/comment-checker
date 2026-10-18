@@ -12,6 +12,14 @@ struct Vectors {
     element_open: String,
     clean: String,
     trigger: String,
+    cases: Vec<Case>,
+}
+
+struct Case {
+    name: String,
+    input: String,
+    exit: i32,
+    stderr_contains: Option<String>,
 }
 
 fn vectors() -> Result<Vectors, Box<dyn std::error::Error>> {
@@ -28,13 +36,56 @@ fn vectors() -> Result<Vectors, Box<dyn std::error::Error>> {
             .ok_or("missing vector field")?
             .to_string())
     };
+    let cases = parse_cases(section)?;
     Ok(Vectors {
         prefix: field("prefix")?,
         placeholder: field("placeholder")?,
         element_open: field("element_open")?,
         clean: field("clean")?,
         trigger: field("trigger")?,
+        cases,
     })
+}
+
+/// Parse the `cases` array, failing loudly on a malformed entry or a missing/empty list, so the
+/// contract test can never pass by silently running zero cases.
+fn parse_cases(section: &serde_json::Value) -> Result<Vec<Case>, Box<dyn std::error::Error>> {
+    let array = section
+        .get("cases")
+        .and_then(serde_json::Value::as_array)
+        .ok_or("vectors section has no `cases` array")?;
+    if array.is_empty() {
+        return Err("vectors section `cases` array is empty".into());
+    }
+    let mut cases = Vec::with_capacity(array.len());
+    for case in array {
+        let name = case
+            .get("name")
+            .and_then(serde_json::Value::as_str)
+            .ok_or("a case is missing `name`")?;
+        let input = case
+            .get("input")
+            .and_then(serde_json::Value::as_str)
+            .ok_or("a case is missing `input`")?;
+        let exit = case
+            .get("exit")
+            .and_then(serde_json::Value::as_i64)
+            .ok_or("a case is missing `exit`")?;
+        let exit = i32::try_from(exit).map_err(|_| "a case `exit` is out of i32 range")?;
+        // Optional, but a present non-string value is a malformed vector, not an absent field.
+        let stderr_contains = match case.get("stderr_contains") {
+            None => None,
+            Some(serde_json::Value::String(value)) => Some(value.clone()),
+            Some(_) => return Err("a case `stderr_contains` is not a string".into()),
+        };
+        cases.push(Case {
+            name: name.to_string(),
+            input: input.to_string(),
+            exit,
+            stderr_contains,
+        });
+    }
+    Ok(cases)
 }
 
 fn run(input: &str, args: &[&str]) -> Result<Output, Box<dyn std::error::Error>> {
@@ -141,5 +192,31 @@ fn unknown_positional_arguments_are_ignored() -> TestResult {
         "stderr: {}",
         stderr(&output)
     );
+    Ok(())
+}
+
+#[test]
+fn declared_contract_cases_exit_as_specified() -> TestResult {
+    let v = vectors()?;
+    for case in &v.cases {
+        let output = run(&case.input, &[])?;
+        assert_eq!(
+            output.status.code(),
+            Some(case.exit),
+            "case {}: stderr {}",
+            case.name,
+            stderr(&output)
+        );
+        if let Some(needle) = &case.stderr_contains {
+            let text = stderr(&output);
+            // The real line is `[<tool>] Skipping: <reason>` (api.rs); assert the tool-prefixed line.
+            let expected = format!("{} {}", v.prefix, needle);
+            assert!(
+                text.contains(&expected),
+                "case {}: expected stderr to contain {expected:?}, got: {text}",
+                case.name
+            );
+        }
+    }
     Ok(())
 }
