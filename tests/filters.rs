@@ -351,6 +351,12 @@ fn apply_filters_spares_justifications_and_flags_proven_smells() {
             CommentType::Line,
             Some("agent-memo"),
         ),
+        // an agent memo is not acquitted by the opt-out marker either (D13)
+        (
+            "# Changed from a to b  # comment-checker: allow",
+            CommentType::Line,
+            Some("agent-memo"),
+        ),
         ("# x = 1;", CommentType::Line, Some("commented-out-code")),
         // regression: a compact assignment (no spaces) is still commented-out code
         ("# x=1", CommentType::Line, Some("commented-out-code")),
