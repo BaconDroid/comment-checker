@@ -209,9 +209,11 @@ fn declared_contract_cases_exit_as_specified() -> TestResult {
         );
         if let Some(needle) = &case.stderr_contains {
             let text = stderr(&output);
+            // The real line is `[<tool>] Skipping: <reason>` (api.rs); assert the tool-prefixed line.
+            let expected = format!("{} {}", v.prefix, needle);
             assert!(
-                text.contains(needle),
-                "case {}: expected stderr to contain {needle:?}, got: {text}",
+                text.contains(&expected),
+                "case {}: expected stderr to contain {expected:?}, got: {text}",
                 case.name
             );
         }

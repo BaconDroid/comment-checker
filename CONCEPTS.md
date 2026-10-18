@@ -63,6 +63,10 @@ and the wrapper is documented and gated by `tests/readme_hook.rs`.
 | `1` | **wrapper only**: the check did not run (binary missing, or an unexpected exit code). The binary itself never exits `1`. |
 
 The malformed / empty / unknown-tool / missing-path / unknown-extension cases all exit `0` **with**
-the visible skip line, and `tests/parity.rs` asserts that line from `parity/vectors.json`. Making a
-missing binary loud (exit `1`, "did not run") is the wrapper's job, so a broken install can never look
-like a clean pass.
+the visible `[<tool>] Skipping: <reason>` line, and `tests/parity.rs` asserts that line from
+`parity/vectors.json`. Making a missing binary loud (exit `1`, "did not run") is the wrapper's job, so
+a broken install can never look like a clean pass.
+
+A crash is also non-zero: release builds use `panic = "abort"` and no `catch_unwind` (or panic hook)
+is installed (`Cargo.toml`), so a panic aborts (SIGABRT, a non-zero status) instead of exiting `0`;
+the wrapper maps any unexpected status to `1` ("did not run").
