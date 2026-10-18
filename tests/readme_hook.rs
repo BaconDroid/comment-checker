@@ -114,3 +114,26 @@ fn documented_wiring_passes_the_binary_exit_codes_through() -> TestResult {
     );
     Ok(())
 }
+
+/// The gatekeeper has teeth: each weakening the README warns against must fail the missing-binary
+/// contract (exit 1 **and** "did not run"), so a future edit cannot silently neuter it.
+#[test]
+fn weakening_patterns_do_not_satisfy_the_missing_binary_contract() -> TestResult {
+    let name = env!("CARGO_PKG_NAME");
+    let path = path_without_the_binary()?;
+    let weakenings = [
+        format!("{name} || exit 0"),
+        name.to_string(),
+        "cat >/dev/null; exit 0".to_string(),
+    ];
+    for command in &weakenings {
+        let output = run(command, &path, b"{}")?;
+        let contracted = output.status.code() == Some(1)
+            && String::from_utf8_lossy(&output.stderr).contains("did not run");
+        assert!(
+            !contracted,
+            "a weakened command satisfied the gatekeeper: {command}"
+        );
+    }
+    Ok(())
+}
