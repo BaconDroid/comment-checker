@@ -1,7 +1,7 @@
 # Baseline
 
-Measured with `eval/baseline.py` on a **loaded** dev box (load average ~8, so the recorded numbers are
-inflated — re-record on an idle machine before relying on them).
+Measured with `eval/baseline.py` on a lightly loaded dev box (load average ~2; re-record on an idle
+machine for the tightest gate).
 
 ## Contract
 
@@ -22,5 +22,5 @@ Re-record on an idle machine:
 python3 eval/baseline.py target/release/comment-checker --record
 ```
 
-Recorded (loaded): release p95 17.39 ms. Binary size: 31 languages ≈ 53.8 MB, 35 (dart/haskell/r/zig)
+Recorded (load ~2): release p95 12.40 ms. Binary size: 31 languages ≈ 53.8 MB, 35 (dart/haskell/r/zig)
 ≈ 60.2 MB (+11.9 %).
