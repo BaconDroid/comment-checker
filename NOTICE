@@ -14,3 +14,7 @@ classifier tables and predicates in that project's `src/classify.rs`.
 That upstream project ships no NOTICE file; this file records the attribution
 obligation. The Apache-2.0 license text is available at
 https://www.apache.org/licenses/LICENSE-2.0
+
+The evaluation corpus in `eval/sf-corpus/corpus.json` is copied from that
+project's `eval/corpus.json` at commit 44e1c87 (Apache-2.0); see
+`eval/sf-corpus/README.md` for the pinned commit and the kind mapping.
