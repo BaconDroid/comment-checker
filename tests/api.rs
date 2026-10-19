@@ -131,3 +131,39 @@ fn check_hook_input_given_unknown_tool_skips() {
     // then
     assert_eq!(result.exit_code, 0);
 }
+
+#[test]
+fn check_hook_input_given_apply_patch_adding_comment_exits_two() {
+    // given: the OpenCode plugin forwards `apply_patch`, which must be checked as an edit.
+    let input = r#"{"tool_name":"apply_patch","tool_input":{"file_path":"a.py","old_string":"print(1)\n","new_string":"print(1)\n# comment\n"}}"#;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+}
+
+#[test]
+fn check_hook_input_given_lowercase_write_exits_two() {
+    // given: the OpenCode plugin forwards the tool name lowercased.
+    let input = r##"{"tool_name":"write","tool_input":{"file_path":"a.py","content":"# comment\nprint(1)"}}"##;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+}
+
+#[test]
+fn check_hook_input_given_edit_with_edits_array_analyzes_the_edits() {
+    // given: an `Edit` carrying the plugin's `edits[]` array, with the top-level `new_string` empty.
+    let input = r#"{"tool_name":"Edit","tool_input":{"file_path":"a.py","edits":[{"old_string":"print(1)\n","new_string":"print(1)\n# comment\n"}]}}"#;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+}

@@ -4,11 +4,33 @@ use crate::detector::CommentDetector;
 use crate::engine::{self, null_default};
 use crate::filters::{SuppressionFilter, apply_filters};
 use crate::language::language_for_path;
-use crate::models::Edit;
+use crate::models::{CommentInfo, Edit};
 use crate::output::format_hook_message;
 
 pub const EXIT_PASS: i32 = 0;
 pub const EXIT_BLOCK: i32 = 2;
+
+/// The hook tool that produced a change. Claude Code sends `Write`/`Edit`/`MultiEdit`; the
+/// `OpenCode` plugin normalizes to the same names but also forwards `apply_patch`, so matching is
+/// case-insensitive and `apply_patch` behaves like an edit.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ToolKind {
+    Write,
+    Edit,
+    MultiEdit,
+}
+
+fn classify_tool(name: &str) -> Option<ToolKind> {
+    if name.eq_ignore_ascii_case("write") {
+        Some(ToolKind::Write)
+    } else if name.eq_ignore_ascii_case("edit") || name.eq_ignore_ascii_case("apply_patch") {
+        Some(ToolKind::Edit)
+    } else if name.eq_ignore_ascii_case("multiedit") {
+        Some(ToolKind::MultiEdit)
+    } else {
+        None
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -96,12 +118,9 @@ fn evaluate(
     custom_prompt: &str,
     include_docstrings: bool,
 ) -> HookCheckResult {
-    if !matches!(
-        hook_input.tool_name.as_str(),
-        "Write" | "Edit" | "MultiEdit"
-    ) {
+    let Some(tool) = classify_tool(&hook_input.tool_name) else {
         return skip("Unsupported tool");
-    }
+    };
     let file_path = hook_input.tool_input.file_path.as_str();
     if file_path.is_empty() {
         return skip("No file path provided");
@@ -111,22 +130,24 @@ fn evaluate(
     }
 
     let suppression = SuppressionFilter;
-    let suppressed = match hook_input.tool_name.as_str() {
-        "Edit" => suppression.is_file_suppressed(&hook_input.tool_input.new_string),
-        "MultiEdit" => hook_input
+    let suppressed = match tool {
+        ToolKind::Edit if hook_input.tool_input.edits.is_empty() => {
+            suppression.is_file_suppressed(&hook_input.tool_input.new_string)
+        }
+        ToolKind::Edit | ToolKind::MultiEdit => hook_input
             .tool_input
             .edits
             .iter()
             .any(|edit| suppression.is_file_suppressed(&edit.new_string)),
-        _ => suppression.is_file_suppressed(get_content_to_check(hook_input)),
+        ToolKind::Write => suppression.is_file_suppressed(get_content_to_check(hook_input)),
     };
     if suppressed {
         return skip("Suppressed by comment-checker: allow");
     }
 
     let detector = CommentDetector::new();
-    let comments = match hook_input.tool_name.as_str() {
-        "Edit" => {
+    let comments = match tool {
+        ToolKind::Edit if hook_input.tool_input.edits.is_empty() => {
             if hook_input.tool_input.new_string.is_empty() {
                 return skip("No content to check");
             }
@@ -137,25 +158,18 @@ fn evaluate(
                 include_docstrings,
             )
         }
-        "MultiEdit" => {
+        ToolKind::Edit | ToolKind::MultiEdit => {
             if hook_input.tool_input.edits.is_empty() {
                 return skip("No content to check");
             }
-            let mut comments = Vec::new();
-            for edit in &hook_input.tool_input.edits {
-                if edit.new_string.is_empty() {
-                    continue;
-                }
-                comments.extend(detector.detect_edit(
-                    &edit.old_string,
-                    &edit.new_string,
-                    file_path,
-                    include_docstrings,
-                ));
-            }
-            comments
+            edits_comments(
+                &detector,
+                &hook_input.tool_input.edits,
+                file_path,
+                include_docstrings,
+            )
         }
-        _ => {
+        ToolKind::Write => {
             let content = get_content_to_check(hook_input);
             if content.is_empty() {
                 return skip("No content to check");
@@ -174,11 +188,34 @@ fn evaluate(
     }
 
     // A whole-file Write gives trustworthy neighbours; an Edit/MultiEdit fragment does not.
-    if hook_input.tool_name.as_str() == "Write" {
+    if tool == ToolKind::Write {
         crate::filters::contextualize(&mut filtered, get_content_to_check(hook_input), true);
     }
 
     HookCheckResult::block(format_hook_message(&filtered, custom_prompt))
+}
+
+/// Comments for a list of discrete edits: a `MultiEdit`, or an `Edit`/`apply_patch` that attached an
+/// `edits[]` array (the `OpenCode` plugin's shape).
+fn edits_comments(
+    detector: &CommentDetector,
+    edits: &[Edit],
+    file_path: &str,
+    include_docstrings: bool,
+) -> Vec<CommentInfo> {
+    let mut comments = Vec::new();
+    for edit in edits {
+        if edit.new_string.is_empty() {
+            continue;
+        }
+        comments.extend(detector.detect_edit(
+            &edit.old_string,
+            &edit.new_string,
+            file_path,
+            include_docstrings,
+        ));
+    }
+    comments
 }
 
 #[must_use]
