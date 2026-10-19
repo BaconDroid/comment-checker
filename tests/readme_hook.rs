@@ -12,6 +12,10 @@ use std::process::{Command, Output, Stdio};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
+/// Distinct temp dirs per call: the tests in this binary run in parallel and would otherwise race
+/// on the same `cat` symlink (observed as an intermittent `AlreadyExists`).
+static NEXT_PATH_DIR: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 /// The command is the first `"command": "..."` value in the README. The wrapper avoids inner double
 /// quotes, so the value needs no unescaping.
 fn readme_command() -> Result<String, Box<dyn std::error::Error>> {
@@ -33,7 +37,11 @@ fn path_without_the_binary() -> Result<String, Box<dyn std::error::Error>> {
         .map(|dir| Path::new(dir).join("cat"))
         .find(|candidate| candidate.is_file())
         .ok_or("cat is not on PATH")?;
-    let dir = std::env::temp_dir().join(format!("readme-hook-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!(
+        "readme-hook-{}-{}",
+        std::process::id(),
+        NEXT_PATH_DIR.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
     std::fs::create_dir_all(&dir)?;
     let link = dir.join("cat");
     let _ = std::fs::remove_file(&link);
@@ -121,16 +129,25 @@ fn documented_wiring_passes_the_binary_exit_codes_through() -> TestResult {
 fn weakening_patterns_do_not_satisfy_the_missing_binary_contract() -> TestResult {
     let name = env!("CARGO_PKG_NAME");
     let path = path_without_the_binary()?;
+    // A large payload closes the stdin-drain gap: a weakening that never reads stdin breaks the
+    // pipe, so the test can tell a real drain (`cat >/dev/null`) from a silent skip.
+    let payload = vec![b'x'; 1_500_000];
     let weakenings = [
         format!("{name} || exit 0"),
         format!("{name} || true"),
         name.to_string(),
+        // Drains stdin but swallows the result into a green exit.
         "cat >/dev/null; exit 0".to_string(),
+        // Mimics the run-failure message and exit code but never drains stdin.
+        "echo 'did not run - nothing checked this write.' >&2; exit 1".to_string(),
     ];
     for command in &weakenings {
-        let output = run(command, &path, b"{}")?;
-        let contracted = output.status.code() == Some(1)
-            && String::from_utf8_lossy(&output.stderr).contains("did not run");
+        // A broken pipe is itself a failure to satisfy the contract (exit 1 + "did not run"), so a
+        // `run` error counts as "not contracted".
+        let contracted = run(command, &path, &payload).is_ok_and(|output| {
+            output.status.code() == Some(1)
+                && String::from_utf8_lossy(&output.stderr).contains("did not run")
+        });
         assert!(
             !contracted,
             "a weakened command satisfied the gatekeeper: {command}"
