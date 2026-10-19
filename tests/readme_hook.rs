@@ -121,16 +121,25 @@ fn documented_wiring_passes_the_binary_exit_codes_through() -> TestResult {
 fn weakening_patterns_do_not_satisfy_the_missing_binary_contract() -> TestResult {
     let name = env!("CARGO_PKG_NAME");
     let path = path_without_the_binary()?;
+    // A large payload closes the stdin-drain gap: a weakening that never reads stdin breaks the
+    // pipe, so the test can tell a real drain (`cat >/dev/null`) from a silent skip.
+    let payload = vec![b'x'; 1_500_000];
     let weakenings = [
         format!("{name} || exit 0"),
         format!("{name} || true"),
         name.to_string(),
+        // Drains stdin but swallows the result into a green exit.
         "cat >/dev/null; exit 0".to_string(),
+        // Mimics the run-failure message and exit code but never drains stdin.
+        "echo 'did not run - nothing checked this write.' >&2; exit 1".to_string(),
     ];
     for command in &weakenings {
-        let output = run(command, &path, b"{}")?;
-        let contracted = output.status.code() == Some(1)
-            && String::from_utf8_lossy(&output.stderr).contains("did not run");
+        // A broken pipe is itself a failure to satisfy the contract (exit 1 + "did not run"), so a
+        // `run` error counts as "not contracted".
+        let contracted = run(command, &path, &payload).is_ok_and(|output| {
+            output.status.code() == Some(1)
+                && String::from_utf8_lossy(&output.stderr).contains("did not run")
+        });
         assert!(
             !contracted,
             "a weakened command satisfied the gatekeeper: {command}"
