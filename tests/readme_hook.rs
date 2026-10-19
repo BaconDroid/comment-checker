@@ -12,6 +12,10 @@ use std::process::{Command, Output, Stdio};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
+/// Distinct temp dirs per call: the tests in this binary run in parallel and would otherwise race
+/// on the same `cat` symlink (observed as an intermittent `AlreadyExists`).
+static NEXT_PATH_DIR: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 /// The command is the first `"command": "..."` value in the README. The wrapper avoids inner double
 /// quotes, so the value needs no unescaping.
 fn readme_command() -> Result<String, Box<dyn std::error::Error>> {
@@ -33,7 +37,11 @@ fn path_without_the_binary() -> Result<String, Box<dyn std::error::Error>> {
         .map(|dir| Path::new(dir).join("cat"))
         .find(|candidate| candidate.is_file())
         .ok_or("cat is not on PATH")?;
-    let dir = std::env::temp_dir().join(format!("readme-hook-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!(
+        "readme-hook-{}-{}",
+        std::process::id(),
+        NEXT_PATH_DIR.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
     std::fs::create_dir_all(&dir)?;
     let link = dir.join("cat");
     let _ = std::fs::remove_file(&link);
