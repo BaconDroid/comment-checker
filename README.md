@@ -1,21 +1,37 @@
 # comment-checker
 
-> 100% vibe coded. zero comments in my code, zero comments in yours.
->
-> **this entire repo - code, docs, readme, everything - was written by LLMs.**
-> shoutout to claude opus 4.5.
+A Claude Code / OpenCode hook that keeps AI-written code free of unnecessary comments.
 
-A PostToolUse hook for Claude Code / OpenCode that yells at you when you write unnecessary comments.
+## Why this exists
 
-Built with Rust + tree-sitter. Fast. Opinionated. No mercy.
+AI coding agents write code that another AI can read, run and debug. They still leave
+narration behind: comments that restate the next line, trace their own work
+("added X", "fix for Y"), comment out dead code, or park a vacuous TODO. That noise costs
+tokens every time the file is read, drifts away from the code, and teaches the next agent
+to imitate it.
 
-## why
+comment-checker blocks those comments at write time (exit 2, so the agent revises). It is
+built to remove them too (`--strip`, planned). It is the building block for a plugin that
+keeps AI-written code lean.
 
-comments are code smell. if your code needs comments to be understood, your code sucks.
+## Philosophy: narration vs intent
 
-this hook watches every `Write`, `Edit`, `MultiEdit` and screams when it detects comments.
+- **Flagged**: comments that restate or narrate the code, track the agent's own work,
+  commented-out code, vacuous TODOs, agent memos.
+- **Spared**: non-obvious intent (why, constraints, workarounds), license headers,
+  generated-file markers, public API docs, attribution, linter directives, BDD markers.
+- **Lean, not zero**: an AI can infer *what* code does, not *why* it is that way. A comment
+  that carries a constraint or history the code cannot show stays.
 
-exceptions exist. BDD comments (`# given`, `# when`, `# then`), linter directives (`# noqa`, `// @ts-ignore`), shebangs - these are fine. everything else? delete it. yes, even docstrings.
+Every flagged comment carries a `reason`, so the agent knows what to fix.
+
+## Prevent, remove, plug in
+
+| | Status |
+|---|---|
+| Prevent: block the comment at write time | works today (PostToolUse hook) |
+| Remove: strip flagged comments from a file | `--strip` accepted, inert (planned) |
+| Plug in: one plugin combining this and test-checker | planned |
 
 ## install
 

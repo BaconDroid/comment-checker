@@ -4,6 +4,27 @@ The vocabulary shared by `comment-checker` and `test-checker`. The two hooks dif
 comments vs bad tests) but agree on the meaning of "finding", "reason", "unreliable", "floor", and
 on the difference between a deliberate spare and a hook that never ran.
 
+## Lean (the product goal)
+
+The tools exist to keep AI-written repositories small. An agent can derive *what* the code
+does by reading and running it; it cannot derive *why*, and it starts every session without
+memory. So the target is "lean", not "empty".
+
+- **Narration** (comment): restates or describes the code, or tracks the agent's own work.
+  Flagged.
+- **Intent** (comment): a constraint, workaround, license, public API doc or non-obvious
+  reason the code cannot show. Spared.
+- **Scaffolding** (test): left over from the agent's own debugging or exploration (probes,
+  duplicates, tautologies, hollow tests, source greps, mocks of the unit under test).
+  Superfluous.
+- **Guard** (test): pins behavior that must not regress (a fixed bug, a boundary, a
+  contract). Kept, with its intent readable from its name.
+- **Integrity**: a test must never be weakened, skipped, focused or deleted to get green.
+  This holds even when the suite is lean.
+- **Escape hatch**: the `comment-checker: allow` marker suppresses findings for the file, but it
+  does not acquit a proven violation: a comment whose own body is commented-out code, a vacuous
+  `TODO`, or an agent memo stays flagged.
+
 ## Verdict and kind
 
 A **finding** is one reported problem: `comment-checker` reports a `<comment>` element,
@@ -59,7 +80,7 @@ and the wrapper is documented and gated by `tests/readme_hook.rs`.
 | code | meaning |
 | ---- | ------- |
 | `0` | pass, or a deliberate skip. A skip **always** prints a visible `[<tool>] Skipping: <reason>` line on stderr — never a silent exit. |
-| `2` | at least one finding remains after the confidence gate. |
+| `2` | at least one finding remains — a comment that is neither justified nor proven benign. |
 | `1` | **wrapper only**: the check did not run (binary missing, or an unexpected exit code). The binary itself never exits `1`. |
 
 The malformed / empty / unknown-tool / missing-path / unknown-extension cases all exit `0` **with**
