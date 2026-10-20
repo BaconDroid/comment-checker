@@ -201,9 +201,9 @@ unknown arguments are ignored. On a hook run the message goes to stderr and stdo
 
 | code | meaning |
 |------|---------|
-| 0 | pass, or a deliberate skip. A skip prints `[check-comments] Skipping: <reason>` |
+| 0 | pass, or a deliberate skip (a skip prints `[check-comments] Skipping: <reason>`) |
 | 2 | at least one finding remains |
-| 1 | **wrapper only**: the binary was missing, so nothing was checked. The binary itself never exits `1` |
+| 1 | did not run - an internal failure, or the wrapper could not run the binary; nothing was checked |
 
 malformed, empty, unknown-tool, and unknown-extension payloads exit `0` with a visible
 `Skipping:` line, so a payload the hook cannot read is not a silent pass. A panic is not caught:
