@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -49,6 +50,15 @@ def scan(roots: list[str]) -> list[Path]:
     return sorted(set(files))
 
 
+def resolve_executable(value: str) -> str:
+    # The path is operator-supplied (CLI flag), never remote input.
+    candidate = shutil.which(value) or value
+    path = Path(candidate).resolve()
+    if not path.is_file() or not os.access(path, os.X_OK):
+        raise SystemExit(f"diff_vs_sf: not an executable file: {value}")
+    return str(path)
+
+
 def flagged(binary: str, path: Path) -> bool:
     payload = json.dumps(
         {
@@ -59,7 +69,7 @@ def flagged(binary: str, path: Path) -> bool:
             },
         }
     ).encode()
-    proc = subprocess.run([binary], input=payload, capture_output=True)
+    proc = subprocess.run([binary], input=payload, capture_output=True, shell=False)
     return proc.returncode == 2
 
 
@@ -81,13 +91,10 @@ def main() -> int:
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
-    sf_binary = Path(args.sf) / "target" / "release" / "comment-checker"
-    if not Path(args.cc).is_file():
-        print(f"diff_vs_sf: missing cc binary {args.cc}", file=sys.stderr)
-        return 2
-    if not sf_binary.is_file():
-        print(f"diff_vs_sf: missing sf binary {sf_binary}", file=sys.stderr)
-        return 2
+    sf_binary = resolve_executable(
+        str(Path(args.sf) / "target" / "release" / "comment-checker")
+    )
+    cc_binary = resolve_executable(args.cc)
 
     roots = args.root or ["src", "tests"]
     files = scan(roots)
@@ -95,8 +102,8 @@ def main() -> int:
     misses: list[str] = []
     cc_only: list[str] = []
     for path in files:
-        cc_flagged = flagged(args.cc, path)
-        sf_flagged = flagged(str(sf_binary), path)
+        cc_flagged = flagged(cc_binary, path)
+        sf_flagged = flagged(sf_binary, path)
         name = str(path)
         if cc_flagged and sf_flagged:
             both.append(name)
