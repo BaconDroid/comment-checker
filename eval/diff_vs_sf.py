@@ -69,6 +69,8 @@ def flagged(binary: str, path: Path) -> bool:
             },
         }
     ).encode()
+    # The binary path is operator-supplied (CLI flag), never remote input; list form + shell=False.
+    # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
     proc = subprocess.run([binary], input=payload, capture_output=True, shell=False)
     return proc.returncode == 2
 
