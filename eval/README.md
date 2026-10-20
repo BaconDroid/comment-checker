@@ -15,8 +15,8 @@ python3 eval/baseline.py                       # asserts + timing on target/rele
 python3 eval/baseline.py path/to/binary        # explicit binary
 ```
 
-Exit codes are the contract: `0` pass/skip, `2` findings. The binary never exits `1`; `1` is
-reserved for the hook **wrapper** ("did not run", see the README wiring section).
+Exit codes are the contract: `0` clean or deliberate skip, `2` findings, `1` did not run (internal
+failure, or the hook wrapper could not run the binary).
 
 ## Differential against sf
 
