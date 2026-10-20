@@ -314,7 +314,19 @@ fn skip(reason: &str) -> HookCheckResult {
 #[cfg(test)]
 mod tests {
     use super::check_hook_input;
-    use crate::detector::{FORCED_INTERNAL_FAILURE_REASON, set_forced_internal_failure};
+    use crate::detector::{
+        FORCED_INTERNAL_FAILURE_REASON, set_forced_budget_exceeded, set_forced_internal_failure,
+    };
+
+    /// Both seams are process-wide switches; serialize the tests that flip them so one test never
+    /// observes the other's switch.
+    static TEST_SEAM_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn lock_seams() -> std::sync::MutexGuard<'static, ()> {
+        TEST_SEAM_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
 
     /// Clears the test-only switch even if an assertion unwinds.
     struct ForcedInternalFailure;
@@ -332,8 +344,25 @@ mod tests {
         }
     }
 
+    /// Clears the test-only budget switch even if an assertion unwinds.
+    struct ForcedBudgetExceeded;
+
+    impl ForcedBudgetExceeded {
+        fn enable() -> Self {
+            set_forced_budget_exceeded(true);
+            Self
+        }
+    }
+
+    impl Drop for ForcedBudgetExceeded {
+        fn drop(&mut self) {
+            set_forced_budget_exceeded(false);
+        }
+    }
+
     #[test]
     fn internal_failure_exits_one_and_reports_did_not_run() {
+        let _seams = lock_seams();
         let _forced = ForcedInternalFailure::enable();
         let input = r##"{"tool_name":"Write","tool_input":{"file_path":"test.py","content":"# comment\nprint(1)"}}"##;
 
@@ -345,6 +374,26 @@ mod tests {
             format!(
                 "[check-comments] did not run — nothing checked this write.\n{FORCED_INTERNAL_FAILURE_REASON}\n"
             )
+        );
+    }
+
+    #[test]
+    fn budget_exceeded_exits_zero_with_a_visible_skip_not_a_failure() {
+        let _seams = lock_seams();
+        let _forced = ForcedBudgetExceeded::enable();
+        let input = r##"{"tool_name":"Write","tool_input":{"file_path":"test.py","content":"# comment\nprint(1)"}}"##;
+
+        let result = check_hook_input(input, "");
+
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(
+            result.message,
+            "[check-comments] Skipping: Parse budget exceeded\n"
+        );
+        assert!(
+            !result.message.contains("did not run"),
+            "message: {}",
+            result.message
         );
     }
 }

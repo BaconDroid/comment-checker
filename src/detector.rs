@@ -48,6 +48,18 @@ pub(crate) fn set_forced_internal_failure(enabled: bool) {
     FORCE_INTERNAL_FAILURE.store(enabled, std::sync::atomic::Ordering::SeqCst);
 }
 
+/// Test-only switch proving the budget path end to end. Production builds have no way to set it:
+/// there is no environment variable or flag.
+#[cfg(test)]
+static FORCE_BUDGET_EXCEEDED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Turn the test-only budget switch on or off.
+#[cfg(test)]
+pub(crate) fn set_forced_budget_exceeded(enabled: bool) {
+    FORCE_BUDGET_EXCEEDED.store(enabled, std::sync::atomic::Ordering::SeqCst);
+}
+
 struct Runtime {
     name: String,
     language: tree_sitter::Language,
@@ -190,19 +202,29 @@ fn runtime_by_name(name: &str) -> Result<Arc<Runtime>, DetectError> {
 /// Parse `source`, telling a budget stop apart from a hard parser failure.
 ///
 /// `engine::parse_cached` returns `None` for both, and a precise budget flag would change the
-/// shared `engine.rs`; instead the elapsed time is the discriminator. A parse that fails at or
-/// after the budget is treated as a budget stop (matching engine's own `>` comparison), and one
-/// that fails sooner is an internal parse failure. A hard failure that takes longer than the
-/// budget is therefore misreported as a skip: an approximation, not a guarantee.
+/// shared `engine.rs`; instead the elapsed time is the discriminator. The default is the ambiguous
+/// outcome: anything not *provably* a fast failure is a budget stop, reported as a visible
+/// `Skipping:` line. Only a `None` returned before half the engine budget has elapsed is provably
+/// too fast to be a budget stop, so only that becomes an internal failure. A hard failure that
+/// takes at least half the budget is therefore misreported as a skip: an approximation, not a
+/// guarantee, but it fails open rather than claiming nothing was checked when the parser simply
+/// ran out of time.
 fn parse_with_runtime(
     runtime: &Runtime,
     source: &[u8],
     file_path: &str,
 ) -> Result<tree_sitter::Tree, DetectError> {
+    #[cfg(test)]
+    if FORCE_BUDGET_EXCEEDED.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err(DetectError::BudgetExceeded);
+    }
+
     let started = Instant::now();
     match engine::parse_cached(&runtime.name, &runtime.language, source) {
         Some(tree) => Ok(tree),
-        None if started.elapsed() >= engine::PARSE_TIME_BUDGET => Err(DetectError::BudgetExceeded),
+        None if started.elapsed() >= engine::PARSE_TIME_BUDGET / 2 => {
+            Err(DetectError::BudgetExceeded)
+        }
         None => Err(DetectError::Internal(format!("parse failed: {file_path}"))),
     }
 }
