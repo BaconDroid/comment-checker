@@ -21,9 +21,9 @@ memory. So the target is "lean", not "empty".
   contract). Kept, with its intent readable from its name.
 - **Integrity**: a test must never be weakened, skipped, focused or deleted to get green.
   This holds even when the suite is lean.
-- **Escape hatch**: the `comment-checker: allow` marker suppresses findings for the file, but it
-  does not acquit a proven violation: a comment whose own body is commented-out code, a vacuous
-  `TODO`, or an agent memo stays flagged.
+- **Escape hatch**: the `comment-checker: allow` marker suppresses findings in the analyzed text
+  (the whole `Write` content, or the edited fragment), but it does not acquit a proven violation: a
+  comment whose own body is commented-out code, a vacuous `TODO`, or an agent memo stays flagged.
 
 ## Verdict and kind
 
@@ -81,7 +81,7 @@ and the wrapper is documented and gated by `tests/readme_hook.rs`.
 | ---- | ------- |
 | `0` | pass, or a deliberate skip. A skip **always** prints a visible `[<tool>] Skipping: <reason>` line on stderr — never a silent exit. |
 | `2` | at least one finding remains — a comment that is neither justified nor proven benign. |
-| `1` | **wrapper only**: the check did not run (binary missing, or an unexpected exit code). The binary itself never exits `1`. |
+| `1` | **wrapper only**: the binary was missing, so the check did not run. The binary itself never exits `1`. |
 
 The malformed / empty / unknown-tool / missing-path / unknown-extension cases all exit `0` **with**
 the visible `[<tool>] Skipping: <reason>` line, and `tests/parity.rs` asserts that line from
@@ -90,4 +90,4 @@ a broken install can never look like a clean pass.
 
 A crash is also non-zero: release builds use `panic = "abort"` and no `catch_unwind` (or panic hook)
 is installed (`Cargo.toml`), so a panic aborts (SIGABRT, a non-zero status) instead of exiting `0`;
-the wrapper maps any unexpected status to `1` ("did not run").
+the documented wrapper passes it through, so a crash cannot look like a clean pass.
