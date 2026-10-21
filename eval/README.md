@@ -4,6 +4,9 @@ Off-contract evaluation assets. `parity/` locks the cross-repo wire contract; `e
 deliberately **outside** that lock (the parity harness only compares `SHARED` entries), so it may
 grow per-repo fixtures, regression cases, and measured baselines without a coordinated wave.
 
+`eval/baseline.py` is a **manual** tool: CI does not run it (`ci.yml` runs fmt/clippy/test/bench/npm
+and `parity/check.py`). Run it locally before/after a detector or classifier change.
+
 `baseline.py` is the D0 regression guard: it drives the built binary over a fixed set of hook
 payloads, asserts each one's exit code, and measures per-invocation wall time (process startup
 included — that is what a PostToolUse hook pays). Use it before/after a detector or classifier
