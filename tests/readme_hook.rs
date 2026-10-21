@@ -6,8 +6,8 @@
 #![cfg(unix)]
 
 use std::io::Write;
-use std::os::unix::fs::symlink;
-use std::path::Path;
+use std::os::unix::fs::{PermissionsExt, symlink};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -30,8 +30,8 @@ fn readme_command() -> Result<String, Box<dyn std::error::Error>> {
     Ok(rest[..close].to_string())
 }
 
-/// A PATH that cannot resolve the hook binary but still resolves the wrapper's `cat`.
-fn path_without_the_binary() -> Result<String, Box<dyn std::error::Error>> {
+/// A fresh PATH directory holding a `cat` symlink, so the wrapper's drain resolves.
+fn path_dir_with_cat() -> Result<PathBuf, Box<dyn std::error::Error>> {
     let cat = std::env::var("PATH")?
         .split(':')
         .map(|dir| Path::new(dir).join("cat"))
@@ -46,6 +46,23 @@ fn path_without_the_binary() -> Result<String, Box<dyn std::error::Error>> {
     let link = dir.join("cat");
     let _ = std::fs::remove_file(&link);
     symlink(&cat, &link)?;
+    Ok(dir)
+}
+
+/// A PATH that cannot resolve the hook binary but still resolves the wrapper's `cat`.
+fn path_without_the_binary() -> Result<String, Box<dyn std::error::Error>> {
+    Ok(path_dir_with_cat()?.to_string_lossy().to_string())
+}
+
+/// A PATH whose `comment-checker` is a stub that prints `marker` to stderr and exits 1.
+fn path_with_stub_binary(marker: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let dir = path_dir_with_cat()?;
+    let stub = dir.join("comment-checker");
+    std::fs::write(
+        &stub,
+        format!("#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' '{marker}' >&2\nexit 1\n"),
+    )?;
+    std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755))?;
     Ok(dir.to_string_lossy().to_string())
 }
 
@@ -66,6 +83,26 @@ fn run(
     // Fails if the wiring does not drain stdin: an unread pipe blocks or raises SIGPIPE.
     stdin.write_all(input)?;
     Ok(child.wait_with_output()?)
+}
+
+/// The wrapper must not turn a binary failure into its own "did not run" message. When the binary
+/// is present it `exec`s it, so exit 1 and stderr belong to the binary alone.
+#[test]
+fn documented_wiring_passes_a_binary_failure_through_unchanged() -> TestResult {
+    // given: a stub binary on PATH that fails loudly
+    let command = readme_command()?;
+    let marker = "readme-hook-stub: binary failed with its own message";
+    let search_path = path_with_stub_binary(marker)?;
+
+    // when
+    let output = run(&command, &search_path, b"{}")?;
+
+    // then
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "stderr: {stderr}");
+    assert!(stderr.contains(marker), "stderr: {stderr}");
+    assert!(!stderr.contains("did not run"), "stderr: {stderr}");
+    Ok(())
 }
 
 #[test]

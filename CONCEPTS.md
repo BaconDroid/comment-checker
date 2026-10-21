@@ -72,8 +72,9 @@ These are opposites and must not be confused:
   the input never arrived, or a failure was swallowed. This is a defect.
 
 `comment-checker` and `test-checker` fail open on a payload they cannot read (exit `0` with a
-`Skipping:` line). The exit `1` "did not run" path belongs to the **wrapper**, never to the binary,
-and the wrapper is documented and gated by `tests/readme_hook.rs`.
+`Skipping:` line). An **internal** failure exits `1` with a visible "did not run" line from the
+binary itself; the wrapper also maps a missing or unexpected binary to `1`. Both are documented and
+gated by `tests/readme_hook.rs`.
 
 ## Exit codes
 
@@ -81,13 +82,19 @@ and the wrapper is documented and gated by `tests/readme_hook.rs`.
 | ---- | ------- |
 | `0` | pass, or a deliberate skip. A skip **always** prints a visible `[<tool>] Skipping: <reason>` line on stderr — never a silent exit. |
 | `2` | at least one finding remains — a comment that is neither justified nor proven benign. |
-| `1` | **wrapper only**: the binary was missing, so the check did not run. The binary itself never exits `1`. |
+| `1` | **did not run**: the binary failed internally (nothing was checked), or the wrapper could not run it (binary missing / unexpected status). |
 
-The malformed / empty / unknown-tool / missing-path / unknown-extension cases all exit `0` **with**
-the visible `[<tool>] Skipping: <reason>` line, and `tests/parity.rs` asserts that line from
-`parity/vectors.json`. Making a missing binary loud (exit `1`, "did not run") is the wrapper's job, so
-a broken install can never look like a clean pass.
+The malformed / empty / unknown-tool / missing-path / unknown-extension / oversize / parse-budget
+cases all exit `0` **with** the visible `[<tool>] Skipping: <reason>` line, and `tests/parity.rs`
+asserts that line from `parity/vectors.json`. An internal failure exits `1` with
+`[<tool>] did not run — nothing checked this write.` followed by the reason; a broken check can never
+look like a clean pass.
 
 A crash is also non-zero: release builds use `panic = "abort"` and no `catch_unwind` (or panic hook)
 is installed (`Cargo.toml`), so a panic aborts (SIGABRT, a non-zero status) instead of exiting `0`;
 the documented wrapper passes it through, so a crash cannot look like a clean pass.
+
+Per the official hooks docs, stderr from a hook that exits `0` is never shown to the agent: the
+`Skipping:` lines and Low findings are for humans and logs only. Exit `1` is a non-blocking error that
+shows a `<hook name> hook error` notice to the human in the transcript; exit `2` is the only path that
+feeds stderr back to the agent.

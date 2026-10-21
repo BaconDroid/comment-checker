@@ -167,3 +167,25 @@ fn check_hook_input_given_edit_with_edits_array_analyzes_the_edits() {
     // then
     assert_eq!(result.exit_code, 2);
 }
+
+#[test]
+fn check_hook_input_given_content_over_the_limit_skips_visibly() {
+    // given: a write larger than the documented 2 MiB inspection limit.
+    let content = "x".repeat(2 * 1024 * 1024 + 1);
+    let input = serde_json::json!({
+        "tool_name": "Write",
+        "tool_input": { "file_path": "a.py", "content": content },
+    })
+    .to_string();
+
+    // when
+    let result = check_hook_input(&input, "");
+
+    // then: a skip, never a pass message
+    assert_eq!(result.exit_code, 0);
+    assert_eq!(
+        result.message,
+        "[check-comments] Skipping: File too large\n"
+    );
+    assert!(!result.message.contains("Success"));
+}
