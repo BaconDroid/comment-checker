@@ -17,3 +17,27 @@ python3 eval/baseline.py path/to/binary        # explicit binary
 
 Exit codes are the contract: `0` pass/skip, `2` findings. The binary never exits `1`; `1` is
 reserved for the hook **wrapper** ("did not run", see the README wiring section).
+
+## Differential against sf
+
+`diff_vs_sf.py` is the compatibility check against the reference classifier
+(`systemfsoftware/comment-checker`). It does not build either tool; build both with
+`cargo build --release` and point `--sf` at a checkout of the pinned commit. It feeds both binaries
+the same Write-style payload per file and reports:
+
+1. flagged by both;
+2. sf-flagged, cc-spared (potential misses; listed);
+3. cc-flagged, sf-spared (expected by design, since cc keeps flag-by-default).
+
+It exits `1` when group (2) exceeds `--max-misses` (default 10). CI runs it weekly and on demand
+(`.github/workflows/sf-differential.yml`); it is **not** part of the PR gate.
+
+The imported corpus and the `sf kind → cc expectation` mapping live in `sf-corpus/`.
+
+```bash
+cargo build --release -p comment-checker
+python3 eval/diff_vs_sf.py --sf /path/to/sf-checkout --root src --root tests
+```
+
+Pin bump: update the commit in `sf-corpus/README.md`, re-copy `eval/corpus.json`, and triage the new
+group (2).
