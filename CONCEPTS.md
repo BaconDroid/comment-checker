@@ -22,8 +22,9 @@ memory. So the target is "lean", not "empty".
 - **Integrity**: a test must never be weakened, skipped, focused or deleted to get green.
   This holds even when the suite is lean.
 - **Escape hatch**: the `comment-checker: allow` marker suppresses findings in the analyzed text
-  (the whole `Write` content, or the edited fragment), but it does not acquit a proven violation: a
-  comment whose own body is commented-out code, a vacuous `TODO`, or an agent memo stays flagged.
+  (the whole `Write` content, or the edited fragment). The hook checks the marker before detection
+  runs, so it acquits everything in that content - including a comment whose own body is
+  commented-out code, a vacuous `TODO`, or an agent memo.
 
 ## Verdict and kind
 
