@@ -34,7 +34,11 @@ to revise the file. The hook cannot prevent or undo the write, and it never edit
 - **Spared**: non-obvious intent (why, constraints, workarounds), license headers,
   generated-file markers, public API docs, attribution, linter directives, BDD markers.
 - **Lean, not zero**: an AI can infer *what* code does, not *why* it is that way. A comment
-  that carries a constraint or history the code cannot show stays.
+  stays only for a *why* that still applies - a live constraint, a workaround with its
+  trigger condition, an issue link that still binds the code - in one line. How the code got
+  here belongs in the commit message; a behavior belongs in a test named after the bug; what
+  the code already shows belongs in no comment at all. And if a comment is even slightly
+  stale, it goes: a wrong comment costs more than none.
 
 ## install
 
