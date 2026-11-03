@@ -159,21 +159,11 @@ jobs:
           body: |
             ## Installation
 
-            ### npm (Recommended)
-            ```bash
-            npm install -g @code-yeongyu/comment-checker
-            # or
-            bun add -g @code-yeongyu/comment-checker
-            ```
-
-            ### Homebrew (macOS)
-            ```bash
-            brew tap code-yeongyu/tap
-            brew install comment-checker
-            ```
-
             ### Manual Download
             Download the appropriate Rust native binary for your platform from the assets below.
+
+            npm and Homebrew are not published from this repository yet; use the
+            binary assets below.
 
             **Supported Platforms:**
             - macOS (arm64, x64)
@@ -182,7 +172,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # Disabled: pushes the formula to code-yeongyu/homebrew-tap (upstream's
+  # channel). BaconDroid/homebrew-tap does not exist yet (probed 2026-11-02,
+  # HTTP 404), so there is no safe destination. Keep this off until the
+  # BaconDroid tap exists, and retarget the formula URLs/clone below to
+  # BaconDroid before re-enabling.
   homebrew:
+    if: false
     needs: release
     runs-on: ubuntu-latest
     steps:
@@ -256,7 +252,13 @@ jobs:
           git commit -m "Update comment-checker to v$VERSION"
           git push
 
+  # Disabled: publishes to the @code-yeongyu npm scope (upstream's channel).
+  # The @bacondroid scope has no published packages yet (probed 2026-11-02,
+  # registry search empty + package 404), so there is no safe destination.
+  # Keep this off until an @bacondroid channel exists, and retarget the
+  # package names/prepare/verify/publish scripts below before re-enabling.
   npm-publish:
+    if: false
     needs: release
     runs-on: ubuntu-latest
     permissions:
