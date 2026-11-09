@@ -23,10 +23,10 @@ the file itself.
 
 | | Status |
 |---|---|
-| Detect and report unnecessary comments | works today (PostToolUse, exit `2`) |
+| Detect and report unnecessary comments | works (PostToolUse, exit `2`) |
 | Prevent or undo the write | not possible from `PostToolUse`; exit `2` is feedback after the write |
-| Remove: strip flagged comments from a file | works today (`--strip`) |
-| Plug in: one plugin combining this and test-checker | works today (`BaconDroid/opencode-guard-plugin` ships both engines) |
+| Remove: strip flagged comments from a file | works (`--strip`) |
+| Plug in: one plugin combining this and test-checker | works (`BaconDroid/opencode-guard-plugin` ships both engines) |
 
 ## Philosophy: narration vs intent
 
@@ -43,9 +43,7 @@ the file itself.
 
 ## install
 
-GitHub Releases carry prebuilt binaries for the five platforms (`v0.8.0` at the time of writing);
-they can lag the source tree, so build from source when you want the latest behavior. This fork
-publishes no npm package or Homebrew formula. Build it from source:
+GitHub Releases carry prebuilt binaries for the five platforms; they can lag the source tree, so build from source when you want the latest behavior. This fork publishes no npm package or Homebrew formula. Build it from source:
 
 ```bash
 git clone https://github.com/BaconDroid/comment-checker
@@ -57,7 +55,7 @@ Rust 1.85+ and a C compiler are required (the tree-sitter grammars are C).
 
 The upstream project publishes `@code-yeongyu/comment-checker`, a `code-yeongyu/tap` formula, and
 binaries under `code-yeongyu/go-claude-code-comment-checker` releases. Those install upstream's
-implementation, not this fork. The npm manifests under `npm/` still carry upstream's scope and
+implementation, not this fork. The npm manifests under `npm/` carry upstream's scope and
 repository URL; they are unreleased packaging sources, not artifacts of this fork.
 
 ## setup
@@ -93,7 +91,7 @@ the wrapper assumes a POSIX shell: `command -v`, `cat`, and `>&2` must exist. On
 wire the binary directly (`comment-checker.exe`) or run it through a shell that provides them; this
 command text does not claim native Windows support.
 
-done. now claude will think twice before leaving `// TODO: fix later` in your code.
+done. claude thinks twice before leaving `// TODO: fix later` in your code.
 
 ## what it catches
 
