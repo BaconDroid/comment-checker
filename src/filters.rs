@@ -478,6 +478,31 @@ fn is_proven_smell(comment: &CommentInfo) -> bool {
         || AgentMemoFilter.is_agent_memo(comment)
 }
 
+/// Environment variable that selects how far the prose-keyword allow-list may acquit. Missing,
+/// empty, or any unrecognized value keeps [`KeywordAcquitMode::ProvenOnly`]; that fail-open default
+/// means a typo narrows nothing.
+const KEYWORD_ACQUIT_ENV: &str = "COMMENT_CHECKER_KEYWORD_ACQUIT";
+
+/// How the prose-keyword fallback acquits a comment. Structural justifications, directives, BDD
+/// markers, shebangs, and the opt-out marker spare a comment in both modes.
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum KeywordAcquitMode {
+    /// A prose keyword acquits unless a proven smell or cited evidence outranks it.
+    ProvenOnly,
+    /// Prose keywords never acquit; a rationale comment is reported on its text-level reason.
+    Never,
+}
+
+/// Read the mode on each invocation; a process that changes the variable between runs sees the
+/// change, and nothing is cached across calls.
+fn keyword_acquit_mode() -> KeywordAcquitMode {
+    if std::env::var(KEYWORD_ACQUIT_ENV).is_ok_and(|value| value == "never") {
+        KeywordAcquitMode::Never
+    } else {
+        KeywordAcquitMode::ProvenOnly
+    }
+}
+
 /// A reason that cites adjacent code. Only a whole-file detection supplies it, so it is proof the
 /// prose-keyword allow-list cannot overturn.
 fn is_contextual_reason(reason: &str) -> bool {
@@ -498,7 +523,7 @@ fn reason_for(comment: &CommentInfo) -> &'static str {
     }
 }
 
-fn is_spared(comment: &CommentInfo) -> bool {
+fn is_spared(comment: &CommentInfo, keyword_acquit: KeywordAcquitMode) -> bool {
     if is_structurally_justified(comment)
         || BddFilter.should_skip(comment)
         || ShebangFilter.should_skip(comment)
@@ -513,8 +538,10 @@ fn is_spared(comment: &CommentInfo) -> bool {
         return true;
     }
     // The prose keywords are a fallback: cited evidence from adjacent code outranks them, so a
-    // narration that says "because" cannot use the word to escape a restates-code verdict.
-    is_non_obvious_intent(comment)
+    // narration that says "because" cannot use the word to escape a restates-code verdict. In
+    // `never` mode the fallback is gone, so a rationale comment keeps its text-level reason.
+    keyword_acquit == KeywordAcquitMode::ProvenOnly
+        && is_non_obvious_intent(comment)
         && !comment
             .metadata
             .get("reason")
@@ -745,9 +772,10 @@ pub(crate) fn contextualize(comments: &mut [CommentInfo], content: &str, reliabl
 
 #[must_use]
 pub fn apply_filters(comments: &[CommentInfo]) -> Vec<CommentInfo> {
+    let keyword_acquit = keyword_acquit_mode();
     comments
         .iter()
-        .filter(|comment| !is_spared(comment))
+        .filter(|comment| !is_spared(comment, keyword_acquit))
         .map(|comment| {
             let mut kept = comment.clone();
             let reason = comment

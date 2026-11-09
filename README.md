@@ -217,6 +217,22 @@ docstring is inspected through its opening line, so markup on a later line is no
    public-API doc, attribution, non-obvious intent)
 7. if anything remains → exit `2` with a warning message, each comment tagged with a `reason`
 
+## environment
+
+| variable | values | default |
+|---|---|---|
+| `COMMENT_CHECKER_KEYWORD_ACQUIT` | `proven-only`, `never` | `proven-only` |
+
+`proven-only` keeps the prose-keyword allow-list as a fallback: `why`, `because`, `workaround`, a
+URL, `algorithm`, `security`, and the other intent markers spare a comment unless the comment's own
+body proves a smell or a whole-file `Write` cites adjacent code.
+
+`never` disables the prose-keyword acquit entirely: a genuine rationale comment is reported on its
+text-level reason (`unnecessary-comment`). Structural justifications (license, generated file,
+public-API doc markup, attribution), directives, BDD markers, shebangs, and
+`comment-checker: allow` still spare a comment. Missing, empty, or any unrecognized value is treated
+as `proven-only`, and the variable is read on every run.
+
 ## CLI
 
 | option | behavior |
@@ -283,11 +299,14 @@ this removal pass with `test-checker`.
 
 ## limits
 
-- the prose-keyword allow-list is conservative outside a whole-file `Write`. A comment containing
-  `why`, `because`, `workaround`, a URL, `algorithm`, or `security` is still spared on an
-  `Edit`/`MultiEdit` fragment, where no adjacent code can prove a restatement; a proven text smell
-  (`commented-out-code`, `vacuous-todo`, `agent-memo`, `past-facing`) wins over the keyword, and on
-  a whole-file `Write` so does cited adjacent code (`restates-code`, `narrates-control-flow`). A
+- the prose-keyword allow-list is conservative outside a whole-file `Write`. In the default
+  `proven-only` mode a comment containing `why`, `because`, `workaround`, a URL, `algorithm`, or
+  `security` is still spared on an `Edit`/`MultiEdit` fragment, where no adjacent code can prove a
+  restatement; a proven text smell (`commented-out-code`, `vacuous-todo`, `agent-memo`,
+  `past-facing`) wins over the keyword, and on a whole-file `Write` so does cited adjacent code
+  (`restates-code`, `narrates-control-flow`). With `COMMENT_CHECKER_KEYWORD_ACQUIT=never` the
+  keyword fallback is gone for both whole files and fragments, so only the structural
+  justifications, directives, BDD markers, shebangs, and the opt-out marker spare a comment. A
   comment starting with `allow` passes the directive filter.
 - detection is per comment node. A comment that only makes sense next to code the hook never sees
   still lands in the default `unnecessary-comment` bucket.
