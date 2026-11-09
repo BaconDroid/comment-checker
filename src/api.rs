@@ -245,14 +245,14 @@ fn evaluate(hook_input: &HookInput, custom_prompt: &str, include_docstrings: boo
         return HookOutcome::Clean;
     }
 
-    let mut filtered = apply_filters(&comments);
+    // A whole-file Write gives trustworthy neighbours; an Edit/MultiEdit fragment does not.
+    let mut comments = comments;
+    if tool == ToolKind::Write {
+        crate::filters::contextualize(&mut comments, get_content_to_check(hook_input), true);
+    }
+    let filtered = apply_filters(&comments);
     if filtered.is_empty() {
         return HookOutcome::Clean;
-    }
-
-    // A whole-file Write gives trustworthy neighbours; an Edit/MultiEdit fragment does not.
-    if tool == ToolKind::Write {
-        crate::filters::contextualize(&mut filtered, get_content_to_check(hook_input), true);
     }
 
     HookOutcome::Findings(format_hook_message(&filtered, custom_prompt))
@@ -326,14 +326,15 @@ fn evaluate_strip(
         }
     };
 
-    let mut filtered = apply_filters(&comments);
+    let mut comments = comments;
+    crate::filters::contextualize(&mut comments, &content, true);
+    let filtered = apply_filters(&comments);
     if filtered.is_empty() {
         return strip_message(
             &HookOutcome::Clean,
             &format!("no flagged comments in {}", target.display()),
         );
     }
-    crate::filters::contextualize(&mut filtered, &content, true);
     let report = format_hook_message(&filtered, custom_prompt);
 
     match strip_content(&content, &filtered) {

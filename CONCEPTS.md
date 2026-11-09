@@ -85,9 +85,9 @@ gated by `tests/readme_hook.rs`.
 | `2` | at least one finding remains — a comment that is neither justified nor proven benign. |
 | `1` | **did not run**: the binary failed internally (nothing was checked), or the wrapper could not run it (binary missing / unexpected status). |
 
-The malformed / empty / unknown-tool / missing-path / unknown-extension / oversize / parse-budget
-cases all exit `0` **with** the visible `[<tool>] Skipping: <reason>` line, and `tests/parity.rs`
-asserts that line from `parity/vectors.json`. An internal failure exits `1` with
+The malformed / empty / unknown-tool / missing-path / unknown-extension / unshipped-grammar /
+oversize / parse-budget cases all exit `0` **with** the visible `[<tool>] Skipping: <reason>` line,
+and `tests/parity.rs` asserts that line from `parity/vectors.json`. An internal failure exits `1` with
 `[<tool>] did not run — nothing checked this write.` followed by the reason; a broken check can never
 look like a clean pass.
 

@@ -1,6 +1,10 @@
 #[must_use]
 pub fn language_for_path(file_path: &str) -> Option<&'static str> {
-    tree_sitter_language_pack::detect_language(file_path)
+    let name = tree_sitter_language_pack::detect_language(file_path)?;
+    // The pack maps far more extensions than this binary compiles. A mapped grammar that is not
+    // shipped is a non-code file for the hook: a doc or config edit must not look like an internal
+    // failure, while a shipped code language that fails to load still surfaces as one.
+    tree_sitter_language_pack::has_language(name).then_some(name)
 }
 
 pub(crate) fn docstring_prefix(name: &str) -> Option<&'static str> {
@@ -37,6 +41,21 @@ mod tests {
     fn language_for_path_given_unknown_extension_returns_none() {
         // then
         assert_eq!(language_for_path("main.xyz"), None);
+    }
+
+    #[test]
+    fn language_for_path_given_mapped_but_unshipped_grammar_returns_none() {
+        // given: the pack maps these paths, but this binary does not compile their grammars
+        let paths = ["README.md", "config.json", "Makefile", "setup.ini"];
+
+        // when / then
+        for path in paths {
+            assert!(
+                tree_sitter_language_pack::detect_language(path).is_some(),
+                "the pack must map {path} for this case to exercise the unshipped-grammar path"
+            );
+            assert_eq!(language_for_path(path), None, "path: {path}");
+        }
     }
 
     #[test]

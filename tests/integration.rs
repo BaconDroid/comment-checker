@@ -262,6 +262,121 @@ fn write_control_flow_narration_is_named() {
 }
 
 #[test]
+fn write_narration_with_a_keyword_reports_the_cited_reason() {
+    // given: a loop narration whose "because" would otherwise trigger the prose-keyword acquit
+    let input = r##"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"# loop over the items because we need a sum\nfor item in items:\n    pass\n"}}"##;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then: the proven narration outranks the keyword
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        result.message.contains("reason=\"narrates-control-flow\""),
+        "message: {}",
+        result.message
+    );
+}
+
+#[test]
+fn write_restatement_with_a_keyword_reports_the_cited_reason() {
+    // given: an operator restatement that also carries "because"
+    let input = r##"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"# increment the counter because retries matter\ncounter += 1\n"}}"##;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        result
+            .message
+            .contains("reason=\"restates-code: increment +=\""),
+        "message: {}",
+        result.message
+    );
+}
+
+#[test]
+fn write_genuine_rationale_with_a_keyword_is_spared() {
+    // given: the exact shape the conservative keyword fallback protects
+    let input = r##"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"# Security: constant-time compare to avoid timing side channel\nconstant_time_eq(a, b)\n"}}"##;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 0, "message: {}", result.message);
+}
+
+#[test]
+fn edit_fragment_with_a_keyword_is_spared() {
+    // given: an Edit has no trustworthy neighbours, so the keyword fallback still applies
+    let input = r##"{"tool_name":"Edit","tool_input":{"file_path":"a.py","old_string":"x = 1\n","new_string":"# loop over the items because we need a sum\nfor item in items:\n    pass\n"}}"##;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 0, "message: {}", result.message);
+}
+
+#[test]
+fn write_past_facing_comment_is_named() {
+    // given: history narration instead of the current behavior and its rationale
+    let input = r##"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"# preserve the existing behavior\nprint(1)\n"}}"##;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        result.message.contains("reason=\"past-facing\""),
+        "message: {}",
+        result.message
+    );
+}
+
+#[test]
+fn write_cited_restatement_outranks_past_facing() {
+    // given: a past-facing phrase that also retells the adjacent increment
+    let input = r##"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"# increment the counter as it was before\ncounter += 1\n"}}"##;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        result
+            .message
+            .contains("reason=\"restates-code: increment +=\""),
+        "message: {}",
+        result.message
+    );
+}
+
+#[test]
+fn write_past_facing_comment_keeps_the_suppression_marker() {
+    // given: the file-level escape hatch must still acquit everything in the analyzed content
+    let input = r##"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"# preserve the existing behavior # comment-checker: allow\nprint(1)\n"}}"##;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 0);
+    assert!(
+        result
+            .message
+            .contains("Suppressed by comment-checker: allow"),
+        "message: {}",
+        result.message
+    );
+}
+
+#[test]
 fn write_operator_restatement_cites_the_operator() {
     // given: a comment whose verb maps to the operator the adjacent code uses
     let input = r##"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"# increment it\ncounter += 1\n"}}"##;

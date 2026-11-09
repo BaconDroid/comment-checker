@@ -169,6 +169,35 @@ fn check_hook_input_given_edit_with_edits_array_analyzes_the_edits() {
 }
 
 #[test]
+fn check_hook_input_given_mapped_but_unshipped_grammar_skips_visibly() {
+    // given: the pack maps these paths, but this binary compiles no grammar for them
+    let cases = [
+        ("README.md", "# heading\n"),
+        ("config.json", "{\"a\": 1}\n"),
+        ("Makefile", "all:\n\techo hi\n"),
+        ("setup.ini", "[a]\nb = 1\n"),
+    ];
+
+    for (file_path, content) in cases {
+        let input = serde_json::json!({
+            "tool_name": "Write",
+            "tool_input": { "file_path": file_path, "content": content },
+        })
+        .to_string();
+
+        // when
+        let result = check_hook_input(&input, "");
+
+        // then: a visible skip, never "did not run"
+        assert_eq!(result.exit_code, 0, "path: {file_path}");
+        assert_eq!(
+            result.message, "[check-comments] Skipping: Non-code file\n",
+            "path: {file_path}"
+        );
+    }
+}
+
+#[test]
 fn check_hook_input_given_content_over_the_limit_skips_visibly() {
     // given: a write larger than the documented 2 MiB inspection limit.
     let content = "x".repeat(2 * 1024 * 1024 + 1);

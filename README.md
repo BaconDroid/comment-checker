@@ -152,10 +152,14 @@ it also classifies: a comment that carries a reason the code itself cannot show 
   `http://`), `to avoid`/`to prevent`/`must not`/`should not`/`must be`, `algorithm`, `regex`,
   `security`, `thread-safety`/`thread safety`, `1-based`/`0-based`, `@link`)
 
-the markers are matched as text, not parsed: an intent marker anywhere in the comment spares it.
+the markers are matched as text, not parsed: an intent marker anywhere in the comment spares it,
+unless the comment's own body proves a smell (`commented-out-code`, `vacuous-todo`, `agent-memo`) or
+a whole-file `Write` cites adjacent code (`restates-code`, `narrates-control-flow`). The prose
+keywords are a fallback, not proof: a narration that says "because" reports the proven reason.
 
 a directive is not an acquittal: a `# noqa`-style directive does not excuse a comment whose body is
-commented-out code, a vacuous `TODO`, or an agent memo - a proven smell outranks a directive.
+commented-out code, a vacuous `TODO`, an agent memo, or past-facing wording - a proven smell
+outranks a directive.
 
 `comment-checker: allow` is the exception: the hook checks it against the analyzed content before
 detection runs, so it suppresses all findings for it - the whole `Write` content, or the edited
@@ -172,14 +176,15 @@ every reported comment is a `<comment>` element with a `reason` attribute:
 | `commented-out-code` | the body reads as commented-out code |
 | `vacuous-todo` | a comment starting with `TODO`/`FIXME`; the rule does not judge whether the task is actionable |
 | `agent-memo` | the comment tracks what the agent changed or implemented |
+| `past-facing` | the comment narrates history ("preserve the existing behavior", "previously called") instead of stating the current behavior and its rationale |
 | `unnecessary-comment` | the default: no spare rule matched |
 | `restates-code: <evidence>` | whole-file `Write` only: the comment repeats adjacent code |
 | `narrates-control-flow` | whole-file `Write` only: the comment narrates a nearby loop |
 
-Detection is deny-by-default: a comment is reported unless a spare rule matches. The contextual
-check only refines `unnecessary-comment` on a whole-file `Write`; it never decides whether a
-comment is reported. An `Edit`/`MultiEdit` fragment has no trustworthy neighbours, so it keeps the
-text-level reason.
+Detection is deny-by-default: a comment is reported unless a spare rule matches. On a whole-file
+`Write` the contextual check can refine a generic reason and can overrule the prose-keyword
+fallback; it cannot overrule a structural justification, a directive, or the opt-out marker. An
+`Edit`/`MultiEdit` fragment has no trustworthy neighbours, so it keeps the text-level reason.
 
 see [`CONCEPTS.md`](CONCEPTS.md) for the shared vocabulary (verdict, reason, evidence, unreliable,
 floor, and the difference between fail-open and a silent pass), and [`NOTICE`](NOTICE) for upstream
@@ -192,9 +197,10 @@ cue, dart, dockerfile, elixir, elm, go, groovy, haskell, hcl, html, java, javasc
 ocaml, php, proto, python, r, ruby, rust, scala, sql, svelte, swift, toml, tsx, typescript, yaml,
 zig.
 
-an unknown extension is skipped with `Skipping: Non-code file` and exits `0`. An extension that
-resolves to a language outside the 35 above - for example `.md` or `.json` - fails to load its
-grammar; the hook reports `did not run` and exits `1`.
+an unknown extension is skipped with `Skipping: Non-code file` and exits `0`. The same skip applies
+when the pack maps an extension to a language outside the 35 above - for example `.md`, `.json`,
+`.ini`, or `Makefile` - because this binary has no grammar to parse it. A shipped code language
+whose grammar fails to load (a corrupt install) still reports `did not run` and exits `1`.
 
 docstrings are detected for Python (`"""`/`'''` at line start), and for `/** … */` blocks in
 JavaScript, TypeScript, TSX, and Java. Other languages report their comments only. A Python
@@ -277,9 +283,12 @@ this removal pass with `test-checker`.
 
 ## limits
 
-- the allow-list is textual. A comment containing `why`, `because`, `workaround`, a URL,
-  `algorithm`, or `security` is spared even when it is narration; a comment starting with `allow`
-  passes the directive filter.
+- the prose-keyword allow-list is conservative outside a whole-file `Write`. A comment containing
+  `why`, `because`, `workaround`, a URL, `algorithm`, or `security` is still spared on an
+  `Edit`/`MultiEdit` fragment, where no adjacent code can prove a restatement; a proven text smell
+  (`commented-out-code`, `vacuous-todo`, `agent-memo`, `past-facing`) wins over the keyword, and on
+  a whole-file `Write` so does cited adjacent code (`restates-code`, `narrates-control-flow`). A
+  comment starting with `allow` passes the directive filter.
 - detection is per comment node. A comment that only makes sense next to code the hook never sees
   still lands in the default `unnecessary-comment` bucket.
 - a Python docstring is matched by its opening line only; `@param`/`Args:` markup further down does
@@ -287,7 +296,8 @@ this removal pass with `test-checker`.
 - contextual `restates-code`/`narrates-control-flow` reasons are emitted only for a whole-file
   `Write`. Fragments keep the text-level reason.
 - on a parse-budget abort the hook skips with `Skipping: Parse budget exceeded` and exits `0`. That
-  is fail-open, not a proof that the file is clean. A grammar-load failure is not fail-open: it
+  is fail-open, not a proof that the file is clean. A mapped grammar the binary does not ship is a
+  non-code skip (exit `0`); a grammar-load failure for a shipped code language is not fail-open: it
   exits `1` with `did not run`, because nothing was checked.
 - in JavaScript, TypeScript, TSX, and Java, `/** ... */` docstrings are only inspected when the
   file parses cleanly; any parse error in the tree skips them silently. Python docstrings are
