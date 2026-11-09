@@ -337,7 +337,7 @@ fn evaluate_strip(
     let report = format_hook_message(&filtered, custom_prompt);
 
     match strip_content(&content, &filtered) {
-        Ok(stripped) => match write_atomic(&target, stripped.as_bytes()) {
+        Ok(stripped) => match write_atomic(&target, &content, stripped.as_bytes()) {
             Ok(()) => strip_message(
                 &HookOutcome::Findings(report),
                 &format!(
@@ -645,7 +645,11 @@ fn drop_emptied_lines(
 }
 
 /// Replace the target in one pass, keeping the old bytes intact until the new file is complete.
-fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+///
+/// The new content is written to a sibling temporary first, so a failed write never truncates the
+/// target. Some platforms cannot rename over an existing file, so that error retries the rename
+/// after removing the target and restores `original` if the second rename fails.
+fn write_atomic(path: &Path, original: &str, bytes: &[u8]) -> std::io::Result<()> {
     let permissions = std::fs::metadata(path)
         .ok()
         .map(|metadata| metadata.permissions());
@@ -661,16 +665,31 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         name.to_string_lossy(),
         std::process::id()
     ));
-    let result = std::fs::write(&temporary, bytes).and_then(|()| {
-        if let Some(permissions) = permissions {
-            std::fs::set_permissions(&temporary, permissions)?;
-        }
-        std::fs::rename(&temporary, path)
-    });
-    if result.is_err() {
+    if let Err(error) = std::fs::write(&temporary, bytes) {
         let _ = std::fs::remove_file(&temporary);
+        return Err(error);
     }
-    result
+    if let Some(permissions) = permissions {
+        if let Err(error) = std::fs::set_permissions(&temporary, permissions) {
+            let _ = std::fs::remove_file(&temporary);
+            return Err(error);
+        }
+    }
+    match std::fs::rename(&temporary, path) {
+        Ok(()) => Ok(()),
+        Err(first_error) => {
+            if path.exists() && std::fs::remove_file(path).is_ok() {
+                if let Err(second_error) = std::fs::rename(&temporary, path) {
+                    let _ = std::fs::write(path, original);
+                    let _ = std::fs::remove_file(&temporary);
+                    return Err(second_error);
+                }
+                return Ok(());
+            }
+            let _ = std::fs::remove_file(&temporary);
+            Err(first_error)
+        }
+    }
 }
 
 /// Whether any content this call would inspect is over [`MAX_CONTENT_BYTES`].
