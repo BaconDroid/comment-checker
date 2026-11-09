@@ -1,5 +1,7 @@
 use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 fn run_checker(input: &str, args: &[&str]) -> std::io::Result<std::process::Output> {
     let mut child = Command::new(env!("CARGO_BIN_EXE_comment-checker"))
@@ -13,6 +15,41 @@ fn run_checker(input: &str, args: &[&str]) -> std::io::Result<std::process::Outp
     };
     stdin.write_all(input.as_bytes())?;
     child.wait_with_output()
+}
+
+/// A per-test scratch directory, removed on drop.
+struct TempDir(PathBuf);
+
+impl TempDir {
+    fn new(label: &str) -> std::io::Result<Self> {
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let unique = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "comment-checker-strip-{}-{label}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&path)?;
+        Ok(Self(path))
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn strip_payload(file_path: &str, cwd: &Path) -> String {
+    serde_json::json!({
+        "tool_name": "Write",
+        "tool_input": { "file_path": file_path },
+        "cwd": cwd,
+    })
+    .to_string()
 }
 
 #[test]
@@ -131,20 +168,197 @@ fn cli_given_prompt_version_treats_it_as_a_prompt_value() -> std::io::Result<()>
 }
 
 #[test]
-fn cli_given_strip_is_inert_and_still_reports() -> std::io::Result<()> {
-    // given: a trigger payload with the inert --strip flag
-    let input = r##"{"tool_name":"Write","tool_input":{"file_path":"test.py","content":"# comment\nprint(1)"}}"##;
+fn cli_given_strip_removes_a_whole_file_comment() -> std::io::Result<()> {
+    // given: a relative path resolved against the payload cwd
+    let dir = TempDir::new("whole-line")?;
+    let file = dir.path().join("a.py");
+    std::fs::write(&file, "# narration\nprint(1)\n")?;
+    let input = strip_payload("a.py", dir.path());
 
     // when
-    let output = run_checker(input, &["--strip"])?;
+    let output = run_checker(&input, &["--strip"])?;
+
+    // then
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty(), "stdout: {:?}", output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("strip: removed 1 flagged comment(s)"),
+        "stderr: {stderr}"
+    );
+    assert_eq!(std::fs::read_to_string(&file)?, "print(1)\n");
+    Ok(())
+}
+
+#[test]
+fn cli_given_strip_keeps_trailing_code_and_line_ending() -> std::io::Result<()> {
+    // given
+    let dir = TempDir::new("trailing")?;
+    let file = dir.path().join("b.py");
+    std::fs::write(&file, "x = 1  # explain x\ny = 2\n")?;
+
+    // when
+    let output = run_checker(&strip_payload("b.py", dir.path()), &["--strip"])?;
+
+    // then
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(std::fs::read_to_string(&file)?, "x = 1\ny = 2\n");
+    Ok(())
+}
+
+#[test]
+fn cli_given_strip_removes_a_block_comment_and_its_empty_line() -> std::io::Result<()> {
+    // given
+    let dir = TempDir::new("block")?;
+    let file = dir.path().join("c.c");
+    std::fs::write(&file, "/*\n * narration\n */\nint x = 1;\n")?;
+
+    // when
+    let output = run_checker(&strip_payload("c.c", dir.path()), &["--strip"])?;
+
+    // then
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(std::fs::read_to_string(&file)?, "int x = 1;\n");
+    Ok(())
+}
+
+#[test]
+fn cli_given_strip_drops_an_emptied_line_but_keeps_a_blank_one() -> std::io::Result<()> {
+    // given: two comments empty one line, while the next line was already blank
+    let dir = TempDir::new("emptied")?;
+    let file = dir.path().join("mixed.c");
+    std::fs::write(&file, "// c\n/* a */ // b\n\ncode = 1;\n")?;
+
+    // when
+    let output = run_checker(&strip_payload("mixed.c", dir.path()), &["--strip"])?;
+
+    // then
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(std::fs::read_to_string(&file)?, "\ncode = 1;\n");
+    Ok(())
+}
+
+#[test]
+fn cli_given_strip_removes_a_flagged_docstring() -> std::io::Result<()> {
+    // given
+    let dir = TempDir::new("docstring")?;
+    let file = dir.path().join("d.py");
+    std::fs::write(&file, "def f():\n    \"\"\"docstring\"\"\"\n    pass\n")?;
+
+    // when
+    let output = run_checker(&strip_payload("d.py", dir.path()), &["--strip"])?;
+
+    // then
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(std::fs::read_to_string(&file)?, "def f():\n    pass\n");
+    Ok(())
+}
+
+#[test]
+fn cli_given_strip_spares_a_bdd_comment_and_exits_zero() -> std::io::Result<()> {
+    // given: a spared class must never enter the removal set
+    let dir = TempDir::new("spared")?;
+    let file = dir.path().join("e.py");
+    std::fs::write(&file, "# given\nprint(1)\n")?;
+
+    // when
+    let output = run_checker(&strip_payload("e.py", dir.path()), &["--strip"])?;
+
+    // then
+    assert!(output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("strip: no flagged comments in"),
+        "stderr: {stderr}"
+    );
+    assert_eq!(std::fs::read_to_string(&file)?, "# given\nprint(1)\n");
+    Ok(())
+}
+
+#[test]
+fn cli_given_strip_respects_the_suppression_marker() -> std::io::Result<()> {
+    // given
+    let dir = TempDir::new("suppressed")?;
+    let file = dir.path().join("f.py");
+    let original = "# comment-checker: allow\n# narration\nprint(1)\n";
+    std::fs::write(&file, original)?;
+
+    // when
+    let output = run_checker(&strip_payload("f.py", dir.path()), &["--strip"])?;
+
+    // then
+    assert!(output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("left untouched - suppressed"),
+        "stderr: {stderr}"
+    );
+    assert_eq!(std::fs::read_to_string(&file)?, original);
+    Ok(())
+}
+
+#[test]
+fn cli_given_strip_analyzes_the_file_not_the_payload_content() -> std::io::Result<()> {
+    // given: the on-disk file is clean, while the payload carries a comment
+    let dir = TempDir::new("whole-file")?;
+    let file = dir.path().join("g.py");
+    std::fs::write(&file, "print(1)\n")?;
+    let input = serde_json::json!({
+        "tool_name": "Write",
+        "tool_input": { "file_path": "g.py", "content": "# narration\nprint(2)" },
+        "cwd": dir.path(),
+    })
+    .to_string();
+
+    // when
+    let output = run_checker(&input, &["--strip"])?;
+
+    // then
+    assert!(output.status.success());
+    assert_eq!(std::fs::read_to_string(&file)?, "print(1)\n");
+    Ok(())
+}
+
+#[test]
+fn cli_given_strip_missing_file_reports_payload_without_creating_it() -> std::io::Result<()> {
+    // given
+    let dir = TempDir::new("missing")?;
+    let input = serde_json::json!({
+        "tool_name": "Write",
+        "tool_input": { "file_path": "missing.py", "content": "# narration\nprint(1)" },
+        "cwd": dir.path(),
+    })
+    .to_string();
+
+    // when
+    let output = run_checker(&input, &["--strip"])?;
 
     // then
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&output.stderr);
-    let warning = format!(
-        "[{}] --strip is inert; findings are reported but the file is never rewritten.\n",
-        env!("CARGO_PKG_NAME")
+    assert!(stderr.contains("is not on disk"), "stderr: {stderr}");
+    assert!(!dir.path().join("missing.py").exists());
+    Ok(())
+}
+
+#[test]
+fn cli_given_strip_leaves_the_file_untouched_when_a_comment_is_ambiguous() -> std::io::Result<()> {
+    // given: two injected comments share one host line, so the removal span is ambiguous
+    let dir = TempDir::new("ambiguous")?;
+    let file = dir.path().join("h.html");
+    let original = "<script>let a=1;// x</script><script>let b=2;// x</script>\n";
+    std::fs::write(&file, original)?;
+
+    // when
+    let output = run_checker(&strip_payload("h.html", dir.path()), &["--strip"])?;
+
+    // then
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("left untouched - flagged comment at line 1 matches more than once"),
+        "stderr: {stderr}"
     );
-    assert!(stderr.starts_with(&warning), "stderr: {stderr}");
+    assert_eq!(std::fs::read_to_string(&file)?, original);
     Ok(())
 }

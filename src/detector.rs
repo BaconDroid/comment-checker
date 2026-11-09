@@ -3,7 +3,7 @@ use std::fmt;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Instant;
 
-use tree_sitter::Query;
+use tree_sitter::{Query, QueryCursor, StreamingIterator};
 
 use crate::engine;
 use crate::language::{docstring_prefix, language_for_path};
@@ -284,6 +284,37 @@ fn detects_injected(
     ))
 }
 
+/// Query captures as `(row, node kind, text, start byte, end byte)`.
+///
+/// The range is kept here because the removal pass edits the exact node while `engine::capture_texts`
+/// only feeds reporting.
+fn capture_ranges(
+    query: &Query,
+    tree: &tree_sitter::Tree,
+    source: &[u8],
+) -> Vec<(usize, &'static str, String, usize, usize)> {
+    let mut cursor = QueryCursor::new();
+    cursor.set_byte_range(0..source.len());
+    let mut captures = cursor.captures(query, tree.root_node(), source);
+    let mut out = Vec::new();
+    captures.advance();
+    while let Some((query_match, capture_index)) = captures.get() {
+        if let Some(capture) = query_match.captures.get(*capture_index) {
+            if let Ok(text) = capture.node.utf8_text(source) {
+                out.push((
+                    capture.node.start_position().row,
+                    capture.node.kind(),
+                    text.to_owned(),
+                    capture.node.start_byte(),
+                    capture.node.end_byte(),
+                ));
+            }
+        }
+        captures.advance();
+    }
+    out
+}
+
 fn captures_to_comments(
     query: &Query,
     tree: &tree_sitter::Tree,
@@ -292,21 +323,25 @@ fn captures_to_comments(
     force_docstring: bool,
     row_offset: usize,
 ) -> Vec<CommentInfo> {
-    engine::capture_texts(query, tree, source)
+    capture_ranges(query, tree, source)
         .into_iter()
-        .map(|(row, node_kind, text)| {
+        .map(|(row, node_kind, text, start, end)| {
             let comment_type = if force_docstring {
                 CommentType::Docstring
             } else {
                 determine_comment_type(&text, node_kind)
             };
-            CommentInfo::new(
+            let mut comment = CommentInfo::new(
                 text,
                 row + 1 + row_offset,
                 file_path,
                 comment_type,
                 force_docstring,
-            )
+            );
+            // An injected range indexes the injected text, not the host file the removal pass
+            // edits, so only a host capture carries a usable span.
+            comment.byte_span = (row_offset == 0).then_some((start, end));
+            comment
         })
         .collect()
 }
@@ -327,20 +362,31 @@ fn docstrings_from_query(
 }
 
 fn python_docstrings(content: &str, file_path: &str, row_offset: usize) -> Vec<CommentInfo> {
+    let mut offset = 0;
     content
-        .lines()
+        .split_inclusive('\n')
         .enumerate()
         .filter_map(|(index, line)| {
-            let trimmed = line.trim_start();
-            (trimmed.starts_with("\"\"\"") || trimmed.starts_with("'''")).then(|| {
-                CommentInfo::new(
-                    trimmed,
-                    index + 1 + row_offset,
-                    file_path,
-                    CommentType::Docstring,
-                    true,
-                )
-            })
+            let body = line.strip_suffix('\n').unwrap_or(line);
+            let body = body.strip_suffix('\r').unwrap_or(body);
+            let trimmed = body.trim_start();
+            let comment =
+                (trimmed.starts_with("\"\"\"") || trimmed.starts_with("'''")).then(|| {
+                    let mut comment = CommentInfo::new(
+                        trimmed,
+                        index + 1 + row_offset,
+                        file_path,
+                        CommentType::Docstring,
+                        true,
+                    );
+                    if row_offset == 0 {
+                        let start = offset + (body.len() - trimmed.len());
+                        comment.byte_span = Some((start, start + trimmed.len()));
+                    }
+                    comment
+                });
+            offset += line.len();
+            comment
         })
         .collect()
 }
