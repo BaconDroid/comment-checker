@@ -412,6 +412,56 @@ fn is_vacuous_todo(comment: &CommentInfo) -> bool {
     any_starts(stripped_after_marker(&text), TODO_PREFIXES)
 }
 
+/// Phrases that narrate how the code got here instead of stating what it does now. Matched on the
+/// lowercased text with one comment marker stripped.
+const PAST_FACING_PHRASES: &[&str] = &[
+    "unchanged from previous",
+    "unchanged from the previous",
+    "unchanged from old",
+    "unchanged from the old",
+    "unchanged from original",
+    "unchanged from the original",
+    "same as before",
+    "same as it was",
+    "same as the old",
+    "as was",
+    "as it was",
+    "as used to be",
+    "as it used to be",
+    "this used to",
+    "used to be",
+    "formerly",
+    "previously was",
+    "previously called",
+    "previously named",
+    "copied from",
+    "copied over",
+    "kept as is",
+    "kept unchanged",
+    "kept as it was",
+    "left as is",
+    "left unchanged",
+    "left untouched",
+];
+
+const PRESERVE_VERBS: &[&str] = &["preserve", "preserves", "preserved"];
+const PRESERVED_BEHAVIORS: &[&str] = &["existing", "previous", "original", "old", "current"];
+
+fn preserves_behavior(text: &str) -> bool {
+    PRESERVE_VERBS.iter().any(|verb| {
+        PRESERVED_BEHAVIORS.iter().any(|adjective| {
+            text.contains(&format!("{verb} {adjective} behavior"))
+                || text.contains(&format!("{verb} the {adjective} behavior"))
+        })
+    })
+}
+
+fn is_past_facing(comment: &CommentInfo) -> bool {
+    let text = comment.text.trim().to_lowercase();
+    let text = stripped_after_marker(&text);
+    preserves_behavior(text) || any_contains(text, PAST_FACING_PHRASES)
+}
+
 /// Justifications the comment's own structure proves: a license, a generated notice, public-API
 /// markup, or provenance. They stay unconditional because no keyword or smell can make them false.
 fn is_structurally_justified(comment: &CommentInfo) -> bool {
@@ -441,6 +491,8 @@ fn reason_for(comment: &CommentInfo) -> &'static str {
         "vacuous-todo"
     } else if AgentMemoFilter.is_agent_memo(comment) {
         "agent-memo"
+    } else if is_past_facing(comment) {
+        "past-facing"
     } else {
         "unnecessary-comment"
     }
@@ -454,7 +506,7 @@ fn is_spared(comment: &CommentInfo) -> bool {
         return true;
     }
     // D13: a directive or the opt-out marker must not acquit a proven text smell.
-    if is_proven_smell(comment) {
+    if is_proven_smell(comment) || is_past_facing(comment) {
         return false;
     }
     if DirectiveFilter.should_skip(comment) || SuppressionFilter.should_skip(comment) {
@@ -665,8 +717,8 @@ fn restate_reason(comment: &CommentInfo, adjacent: &str) -> Option<String> {
 /// Edit/MultiEdit fragment, where the context cannot vouch for a verdict, so nothing is emitted.
 ///
 /// Call this before [`apply_filters`]: a proven retelling must be able to outrank the prose-keyword
-/// acquit. A comment already carrying a text-level smell keeps it, so only the generic reason is
-/// refined.
+/// acquit. A comment already carrying a text-level smell keeps it, so only the generic and
+/// past-facing reasons are refined.
 pub(crate) fn contextualize(comments: &mut [CommentInfo], content: &str, reliable: bool) {
     if !reliable {
         return;
@@ -677,7 +729,7 @@ pub(crate) fn contextualize(comments: &mut [CommentInfo], content: &str, reliabl
             continue;
         }
         match comment.metadata.get("reason").map(String::as_str) {
-            None | Some("unnecessary-comment") => {}
+            None | Some("unnecessary-comment" | "past-facing") => {}
             Some(_) => continue,
         }
         let start = comment.line_number;

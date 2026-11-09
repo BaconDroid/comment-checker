@@ -374,6 +374,51 @@ fn apply_filters_spares_justifications_and_flags_proven_smells() {
             CommentType::Line,
             None,
         ),
+        // past-facing wording narrates history; it is a text-level reason, so it also outranks a
+        // keyword
+        (
+            "// Preserve the existing behavior because callers depend on it",
+            CommentType::Line,
+            Some("past-facing"),
+        ),
+        (
+            "// unchanged from the previous release",
+            CommentType::Line,
+            Some("past-facing"),
+        ),
+        ("// same as before", CommentType::Line, Some("past-facing")),
+        (
+            "// this used to be two functions",
+            CommentType::Line,
+            Some("past-facing"),
+        ),
+        (
+            "// the parser previously called read",
+            CommentType::Line,
+            Some("past-facing"),
+        ),
+        (
+            "// copied from the old module",
+            CommentType::Line,
+            Some("past-facing"),
+        ),
+        ("// kept as is", CommentType::Line, Some("past-facing")),
+        // negative controls: a live compatibility constraint states current behavior, not history
+        (
+            "// Kept for backward compatibility: v1 clients parse this exact byte layout",
+            CommentType::Line,
+            Some("unnecessary-comment"),
+        ),
+        (
+            "// Preserves the byte layout v1 clients parse",
+            CommentType::Line,
+            Some("unnecessary-comment"),
+        ),
+        (
+            "// Security: constant-time compare",
+            CommentType::Line,
+            None,
+        ),
         (
             "# regular comment",
             CommentType::Line,

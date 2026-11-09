@@ -322,6 +322,61 @@ fn edit_fragment_with_a_keyword_is_spared() {
 }
 
 #[test]
+fn write_past_facing_comment_is_named() {
+    // given: history narration instead of the current behavior and its rationale
+    let input = r##"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"# preserve the existing behavior\nprint(1)\n"}}"##;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        result.message.contains("reason=\"past-facing\""),
+        "message: {}",
+        result.message
+    );
+}
+
+#[test]
+fn write_cited_restatement_outranks_past_facing() {
+    // given: a past-facing phrase that also retells the adjacent increment
+    let input = r##"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"# increment the counter as it was before\ncounter += 1\n"}}"##;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        result
+            .message
+            .contains("reason=\"restates-code: increment +=\""),
+        "message: {}",
+        result.message
+    );
+}
+
+#[test]
+fn write_past_facing_comment_keeps_the_suppression_marker() {
+    // given: the file-level escape hatch must still acquit everything in the analyzed content
+    let input = r##"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"# preserve the existing behavior # comment-checker: allow\nprint(1)\n"}}"##;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 0);
+    assert!(
+        result
+            .message
+            .contains("Suppressed by comment-checker: allow"),
+        "message: {}",
+        result.message
+    );
+}
+
+#[test]
 fn write_operator_restatement_cites_the_operator() {
     // given: a comment whose verb maps to the operator the adjacent code uses
     let input = r##"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"# increment it\ncounter += 1\n"}}"##;

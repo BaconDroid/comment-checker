@@ -158,7 +158,8 @@ a whole-file `Write` cites adjacent code (`restates-code`, `narrates-control-flo
 keywords are a fallback, not proof: a narration that says "because" reports the proven reason.
 
 a directive is not an acquittal: a `# noqa`-style directive does not excuse a comment whose body is
-commented-out code, a vacuous `TODO`, or an agent memo - a proven smell outranks a directive.
+commented-out code, a vacuous `TODO`, an agent memo, or past-facing wording - a proven smell
+outranks a directive.
 
 `comment-checker: allow` is the exception: the hook checks it against the analyzed content before
 detection runs, so it suppresses all findings for it - the whole `Write` content, or the edited
@@ -175,6 +176,7 @@ every reported comment is a `<comment>` element with a `reason` attribute:
 | `commented-out-code` | the body reads as commented-out code |
 | `vacuous-todo` | a comment starting with `TODO`/`FIXME`; the rule does not judge whether the task is actionable |
 | `agent-memo` | the comment tracks what the agent changed or implemented |
+| `past-facing` | the comment narrates history ("preserve the existing behavior", "previously called") instead of stating the current behavior and its rationale |
 | `unnecessary-comment` | the default: no spare rule matched |
 | `restates-code: <evidence>` | whole-file `Write` only: the comment repeats adjacent code |
 | `narrates-control-flow` | whole-file `Write` only: the comment narrates a nearby loop |
@@ -282,10 +284,10 @@ this removal pass with `test-checker`.
 
 - the prose-keyword allow-list is conservative outside a whole-file `Write`. A comment containing
   `why`, `because`, `workaround`, a URL, `algorithm`, or `security` is still spared on an
-  `Edit`/`MultiEdit` fragment, where no adjacent code can prove a restatement; on a whole-file
-  `Write` a proven `commented-out-code`, `vacuous-todo`, `agent-memo`, `restates-code`, or
-  `narrates-control-flow` smell wins over the keyword. A comment starting with `allow` passes the
-  directive filter.
+  `Edit`/`MultiEdit` fragment, where no adjacent code can prove a restatement; a proven text smell
+  (`commented-out-code`, `vacuous-todo`, `agent-memo`, `past-facing`) wins over the keyword, and on
+  a whole-file `Write` so does cited adjacent code (`restates-code`, `narrates-control-flow`). A
+  comment starting with `allow` passes the directive filter.
 - detection is per comment node. A comment that only makes sense next to code the hook never sees
   still lands in the default `unnecessary-comment` bucket.
 - a Python docstring is matched by its opening line only; `@param`/`Args:` markup further down does
