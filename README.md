@@ -152,7 +152,10 @@ it also classifies: a comment that carries a reason the code itself cannot show 
   `http://`), `to avoid`/`to prevent`/`must not`/`should not`/`must be`, `algorithm`, `regex`,
   `security`, `thread-safety`/`thread safety`, `1-based`/`0-based`, `@link`)
 
-the markers are matched as text, not parsed: an intent marker anywhere in the comment spares it.
+the markers are matched as text, not parsed: an intent marker anywhere in the comment spares it,
+unless the comment's own body proves a smell (`commented-out-code`, `vacuous-todo`, `agent-memo`) or
+a whole-file `Write` cites adjacent code (`restates-code`, `narrates-control-flow`). The prose
+keywords are a fallback, not proof: a narration that says "because" reports the proven reason.
 
 a directive is not an acquittal: a `# noqa`-style directive does not excuse a comment whose body is
 commented-out code, a vacuous `TODO`, or an agent memo - a proven smell outranks a directive.
@@ -176,10 +179,10 @@ every reported comment is a `<comment>` element with a `reason` attribute:
 | `restates-code: <evidence>` | whole-file `Write` only: the comment repeats adjacent code |
 | `narrates-control-flow` | whole-file `Write` only: the comment narrates a nearby loop |
 
-Detection is deny-by-default: a comment is reported unless a spare rule matches. The contextual
-check only refines `unnecessary-comment` on a whole-file `Write`; it never decides whether a
-comment is reported. An `Edit`/`MultiEdit` fragment has no trustworthy neighbours, so it keeps the
-text-level reason.
+Detection is deny-by-default: a comment is reported unless a spare rule matches. On a whole-file
+`Write` the contextual check can refine a generic reason and can overrule the prose-keyword
+fallback; it cannot overrule a structural justification, a directive, or the opt-out marker. An
+`Edit`/`MultiEdit` fragment has no trustworthy neighbours, so it keeps the text-level reason.
 
 see [`CONCEPTS.md`](CONCEPTS.md) for the shared vocabulary (verdict, reason, evidence, unreliable,
 floor, and the difference between fail-open and a silent pass), and [`NOTICE`](NOTICE) for upstream
@@ -277,9 +280,12 @@ this removal pass with `test-checker`.
 
 ## limits
 
-- the allow-list is textual. A comment containing `why`, `because`, `workaround`, a URL,
-  `algorithm`, or `security` is spared even when it is narration; a comment starting with `allow`
-  passes the directive filter.
+- the prose-keyword allow-list is conservative outside a whole-file `Write`. A comment containing
+  `why`, `because`, `workaround`, a URL, `algorithm`, or `security` is still spared on an
+  `Edit`/`MultiEdit` fragment, where no adjacent code can prove a restatement; on a whole-file
+  `Write` a proven `commented-out-code`, `vacuous-todo`, `agent-memo`, `restates-code`, or
+  `narrates-control-flow` smell wins over the keyword. A comment starting with `allow` passes the
+  directive filter.
 - detection is per comment node. A comment that only makes sense next to code the hook never sees
   still lands in the default `unnecessary-comment` bucket.
 - a Python docstring is matched by its opening line only; `@param`/`Args:` markup further down does

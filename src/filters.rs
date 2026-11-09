@@ -412,11 +412,12 @@ fn is_vacuous_todo(comment: &CommentInfo) -> bool {
     any_starts(stripped_after_marker(&text), TODO_PREFIXES)
 }
 
-fn is_justified(comment: &CommentInfo) -> bool {
+/// Justifications the comment's own structure proves: a license, a generated notice, public-API
+/// markup, or provenance. They stay unconditional because no keyword or smell can make them false.
+fn is_structurally_justified(comment: &CommentInfo) -> bool {
     is_license(comment)
         || is_generated_file(comment)
         || is_public_api_doc(comment)
-        || is_non_obvious_intent(comment)
         || is_attribution(comment)
 }
 
@@ -425,6 +426,12 @@ fn is_proven_smell(comment: &CommentInfo) -> bool {
     is_commented_out_code(comment)
         || is_vacuous_todo(comment)
         || AgentMemoFilter.is_agent_memo(comment)
+}
+
+/// A reason that cites adjacent code. Only a whole-file detection supplies it, so it is proof the
+/// prose-keyword allow-list cannot overturn.
+fn is_contextual_reason(reason: &str) -> bool {
+    reason == "narrates-control-flow" || reason.starts_with("restates-code:")
 }
 
 fn reason_for(comment: &CommentInfo) -> &'static str {
@@ -440,7 +447,9 @@ fn reason_for(comment: &CommentInfo) -> &'static str {
 }
 
 fn is_spared(comment: &CommentInfo) -> bool {
-    if is_justified(comment) || BddFilter.should_skip(comment) || ShebangFilter.should_skip(comment)
+    if is_structurally_justified(comment)
+        || BddFilter.should_skip(comment)
+        || ShebangFilter.should_skip(comment)
     {
         return true;
     }
@@ -448,7 +457,16 @@ fn is_spared(comment: &CommentInfo) -> bool {
     if is_proven_smell(comment) {
         return false;
     }
-    DirectiveFilter.should_skip(comment) || SuppressionFilter.should_skip(comment)
+    if DirectiveFilter.should_skip(comment) || SuppressionFilter.should_skip(comment) {
+        return true;
+    }
+    // The prose keywords are a fallback: cited evidence from adjacent code outranks them, so a
+    // narration that says "because" cannot use the word to escape a restates-code verdict.
+    is_non_obvious_intent(comment)
+        && !comment
+            .metadata
+            .get("reason")
+            .is_some_and(|reason| is_contextual_reason(reason))
 }
 
 // --- contextual evidence ------------------------------------------------------------------------
@@ -645,14 +663,22 @@ fn restate_reason(comment: &CommentInfo, adjacent: &str) -> Option<String> {
 
 /// Refine a generic reason with cited evidence from adjacent code. `reliable` is false for an
 /// Edit/MultiEdit fragment, where the context cannot vouch for a verdict, so nothing is emitted.
+///
+/// Call this before [`apply_filters`]: a proven retelling must be able to outrank the prose-keyword
+/// acquit. A comment already carrying a text-level smell keeps it, so only the generic reason is
+/// refined.
 pub(crate) fn contextualize(comments: &mut [CommentInfo], content: &str, reliable: bool) {
     if !reliable {
         return;
     }
     let lines: Vec<&str> = content.lines().collect();
     for comment in comments.iter_mut() {
-        if comment.metadata.get("reason").map(String::as_str) != Some("unnecessary-comment") {
+        if is_proven_smell(comment) {
             continue;
+        }
+        match comment.metadata.get("reason").map(String::as_str) {
+            None | Some("unnecessary-comment") => {}
+            Some(_) => continue,
         }
         let start = comment.line_number;
         let end = start + comment.text.matches('\n').count();
@@ -672,8 +698,13 @@ pub fn apply_filters(comments: &[CommentInfo]) -> Vec<CommentInfo> {
         .filter(|comment| !is_spared(comment))
         .map(|comment| {
             let mut kept = comment.clone();
-            kept.metadata
-                .insert("reason".to_owned(), reason_for(comment).to_owned());
+            let reason = comment
+                .metadata
+                .get("reason")
+                .filter(|reason| is_contextual_reason(reason))
+                .cloned()
+                .unwrap_or_else(|| reason_for(comment).to_owned());
+            kept.metadata.insert("reason".to_owned(), reason);
             kept
         })
         .collect()
