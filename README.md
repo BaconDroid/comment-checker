@@ -43,8 +43,9 @@ the file itself.
 
 ## install
 
-This fork publishes no npm package, Homebrew formula, or prebuilt binary of its own. Build it from
-source:
+GitHub Releases carry prebuilt binaries for the five platforms (`v0.8.0` at the time of writing);
+they can lag the source tree, so build from source when you want the latest behavior. This fork
+publishes no npm package or Homebrew formula. Build it from source:
 
 ```bash
 git clone https://github.com/BaconDroid/comment-checker
