@@ -197,9 +197,10 @@ cue, dart, dockerfile, elixir, elm, go, groovy, haskell, hcl, html, java, javasc
 ocaml, php, proto, python, r, ruby, rust, scala, sql, svelte, swift, toml, tsx, typescript, yaml,
 zig.
 
-an unknown extension is skipped with `Skipping: Non-code file` and exits `0`. An extension that
-resolves to a language outside the 35 above - for example `.md` or `.json` - fails to load its
-grammar; the hook reports `did not run` and exits `1`.
+an unknown extension is skipped with `Skipping: Non-code file` and exits `0`. The same skip applies
+when the pack maps an extension to a language outside the 35 above - for example `.md`, `.json`,
+`.ini`, or `Makefile` - because this binary has no grammar to parse it. A shipped code language
+whose grammar fails to load (a corrupt install) still reports `did not run` and exits `1`.
 
 docstrings are detected for Python (`"""`/`'''` at line start), and for `/** … */` blocks in
 JavaScript, TypeScript, TSX, and Java. Other languages report their comments only. A Python
@@ -295,7 +296,8 @@ this removal pass with `test-checker`.
 - contextual `restates-code`/`narrates-control-flow` reasons are emitted only for a whole-file
   `Write`. Fragments keep the text-level reason.
 - on a parse-budget abort the hook skips with `Skipping: Parse budget exceeded` and exits `0`. That
-  is fail-open, not a proof that the file is clean. A grammar-load failure is not fail-open: it
+  is fail-open, not a proof that the file is clean. A mapped grammar the binary does not ship is a
+  non-code skip (exit `0`); a grammar-load failure for a shipped code language is not fail-open: it
   exits `1` with `did not run`, because nothing was checked.
 - in JavaScript, TypeScript, TSX, and Java, `/** ... */` docstrings are only inspected when the
   file parses cleanly; any parse error in the tree skips them silently. Python docstrings are
