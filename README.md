@@ -18,14 +18,15 @@ building block for a plugin that keeps AI-written code lean.
 
 `PostToolUse` runs **after** the tool has written the file. On a finding the binary exits `2` and
 writes its message to stderr; Claude Code feeds that message back to the agent, which is expected
-to revise the file. The hook cannot prevent or undo the write, and it never edits the file itself.
+to revise the file. Without `--strip` the hook cannot prevent or undo the write, and it never edits
+the file itself.
 
 | | Status |
 |---|---|
 | Detect and report unnecessary comments | works today (PostToolUse, exit `2`) |
 | Prevent or undo the write | not possible from `PostToolUse`; exit `2` is feedback after the write |
-| Remove: strip flagged comments from a file | `--strip` accepted, inert (planned) |
-| Plug in: one plugin combining this and test-checker | planned |
+| Remove: strip flagged comments from a file | works today (`--strip`) |
+| Plug in: one plugin combining this and test-checker | works today (`BaconDroid/opencode-comments-plugin` ships both engines) |
 
 ## Philosophy: narration vs intent
 
@@ -214,7 +215,7 @@ docstring is inspected through its opening line, so markup on a later line is no
 | option | behavior |
 |---|---|
 | `--prompt <text>` | replace the default message. `{{comments}}` is replaced by the XML; without it the custom text is the whole message |
-| `--strip` | accepted and inert; prints a notice to stderr, never rewrites the file |
+| `--strip` | after reporting, remove every flagged comment from the target file; all-or-nothing (see [strip](#strip)) |
 | `--version` | print `comment-checker <version>` to stdout and exit `0` |
 | `--min-confidence <level>` | accepted by the shared argument parser and ignored (comments carry no confidence) |
 
@@ -245,9 +246,33 @@ use `{{comments}}` placeholder to insert the detected comments XML. if omitted, 
 
 ## strip
 
-`--strip` is accepted for forward compatibility but is **inert**: findings are reported exactly as
-without the flag, and the file is never rewritten. Comment removal belongs to the planned plugin,
-not to this detector.
+`--strip` runs a removal pass in the same invocation as the report. Findings are reported exactly as
+without the flag and the exit code is unchanged (`0` clean, `2` findings, `1` did not run); the
+message gains a trailing `[comment-checker] strip: ...` summary.
+
+- **Whole-file mode.** The payload names the target file (`tool_input.file_path`/`filePath`, resolved
+  against the payload `cwd`, falling back to the process cwd). When that file is on disk the run
+  analyzes its full content, so the report is the one a whole-file `Write` would produce - a partial
+  `Edit`/`MultiEdit` fragment is not enough to decide what to rewrite. When the file is missing the
+  run falls back to the payload content and reports it without rewriting anything.
+- **Removable set.** Every comment the run flags is removed. Spared classes (BDD, directives,
+  shebangs, license/generated/public-API/attribution/intent) are never flagged, so they are never
+  removed; a `comment-checker: allow` marker suppresses the run and leaves the file untouched.
+  Flagged docstrings are removable too.
+- **Rewrite rules.** A comment that owns its line removes the whole line including its ending. A
+  trailing comment removes the comment and the whitespace before it, keeping the code and the line
+  ending. A block comment or docstring removes its span; a line left empty by that removal is
+  dropped. Everything else stays byte-identical.
+- **All-or-nothing.** The stripped content is built in memory and written once. If a flagged comment
+  cannot be located unambiguously in the on-disk content, or the write fails, the file is left
+  untouched and the summary says why.
+
+```bash
+comment-checker --strip < hook.json
+```
+
+A plugin can call the binary this way after a write; `BaconDroid/opencode-comments-plugin` combines
+this removal pass with `test-checker`.
 
 ## limits
 
@@ -268,7 +293,8 @@ not to this detector.
   line-based and unaffected.
 - every Python line starting with `"""`/`'''` is treated as its own comment, so the closing
   delimiter line of a multi-line docstring can produce a spurious finding.
-- this is a detector. It does not rewrite, delete, or format comments.
+- without `--strip` this is a detector: it does not rewrite, delete, or format comments. With
+  `--strip` it removes only the comments it flags, following the rules above.
 
 ## philosophy
 

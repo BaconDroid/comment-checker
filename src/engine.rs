@@ -115,7 +115,8 @@ where
 /// Parsed hook options shared by both repos.
 ///
 /// `min_confidence` is only meaningful for a repo whose findings carry a confidence (currently
-/// test-checker); others ignore it. `strip` is accepted but inert (α): the flag never rewrites the
+/// test-checker); others ignore it. `strip` runs the repo's removal pass over the target file (see the README):
+/// findings are reported as usual, and the flagged items the pass owns are stripped from the
 /// file.
 #[derive(Clone, Debug, Default)]
 pub struct Options {
@@ -128,7 +129,7 @@ pub struct Options {
 /// Hand-rolled argument parser.
 ///
 /// Recognises `--prompt <text>` / `--prompt=<text>`, `--min-confidence <level>` /
-/// `--min-confidence=<level>`, the inert `--strip`, and `--version`; every other argument is
+/// `--min-confidence=<level>`, the removal-pass `--strip`, and `--version`; every other argument is
 /// ignored. A value consumed by `--prompt`/`--min-confidence` is never read as a flag, so
 /// `--prompt --version` sets the prompt instead of printing the version.
 #[must_use]

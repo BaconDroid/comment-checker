@@ -30,6 +30,10 @@ pub struct CommentInfo {
     pub is_docstring: bool,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub metadata: BTreeMap<String, String>,
+    // Off the wire because detect_comments_json is a stable public shape; the removal pass reads
+    // it to edit the exact node. None when the span is relative to injected text, not the host.
+    #[serde(skip)]
+    pub(crate) byte_span: Option<(usize, usize)>,
 }
 
 impl CommentInfo {
@@ -48,6 +52,7 @@ impl CommentInfo {
             comment_type,
             is_docstring,
             metadata: BTreeMap::new(),
+            byte_span: None,
         }
     }
 
