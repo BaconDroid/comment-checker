@@ -26,7 +26,7 @@ the file itself.
 | Detect and report unnecessary comments | works today (PostToolUse, exit `2`) |
 | Prevent or undo the write | not possible from `PostToolUse`; exit `2` is feedback after the write |
 | Remove: strip flagged comments from a file | works today (`--strip`) |
-| Plug in: one plugin combining this and test-checker | works today (`BaconDroid/opencode-comments-plugin` ships both engines) |
+| Plug in: one plugin combining this and test-checker | works today (`BaconDroid/opencode-guard-plugin` ships both engines) |
 
 ## Philosophy: narration vs intent
 
@@ -294,7 +294,7 @@ message gains a trailing `[comment-checker] strip: ...` summary.
 comment-checker --strip < hook.json
 ```
 
-A plugin can call the binary this way after a write; `BaconDroid/opencode-comments-plugin` combines
+A plugin can call the binary this way after a write; `BaconDroid/opencode-guard-plugin` combines
 this removal pass with `test-checker`.
 
 ## limits
