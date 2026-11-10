@@ -46,7 +46,6 @@ the same branch name in both repositories.
 | # | Item | Status |
 |:-:|:-----|:------|
 | **[cc+tc]** X1 | Marker hardening: a marker counts only inside a detected comment node, a marker added by the same edit is inert and reported, malformed markers report `allow-invalid`. `parity/vectors.json`'s `suppression-marker` case changes with it. | later |
-| **[cc+tc]** X2 | Deterministic parse-budget outcome: identical bytes must always produce the same verdict. Needs an outcome decision inside `src/detector.rs` or a shared-surface change in `src/engine.rs`. | now |
 
 ## Not adopted
 
