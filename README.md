@@ -211,7 +211,7 @@ docstring is inspected through its opening line, so markup on a later line is no
 1. hook receives JSON from Claude Code (the OpenCode plugin sends the same shape, plus `apply_patch`)
 2. extracts content from `Write`/`Edit`/`MultiEdit` tool input
 3. detects language from file extension
-4. parses AST with tree-sitter (50 ms budget per parse)
+4. parses AST with tree-sitter under a deterministic parse-operation budget
 5. finds comment nodes, plus comments inside injected regions such as `<script>`
 6. classifies: spares BDD, directives, shebangs, and justified comments (license, generated,
    public-API doc, attribution, non-obvious intent)
@@ -314,10 +314,13 @@ this removal pass with `test-checker`.
   not spare it.
 - contextual `restates-code`/`narrates-control-flow` reasons are emitted only for a whole-file
   `Write`. Fragments keep the text-level reason.
-- on a parse-budget abort the hook skips with `Skipping: Parse budget exceeded` and exits `0`. That
-  is fail-open, not a proof that the file is clean. A mapped grammar the binary does not ship is a
-  non-code skip (exit `0`); a grammar-load failure for a shipped code language is not fail-open: it
-  exits `1` with `did not run`, because nothing was checked.
+- a parse that exceeds the deterministic parse-operation budget skips with `Skipping: Parse
+  budget exceeded` and exits `0`. The budget counts parser progress callbacks rather than wall
+  clock, so identical bytes always reach the same verdict regardless of machine load; an
+  above-budget file is never partially analyzed. That is fail-open, not a proof that the file is
+  clean. A mapped grammar the binary does not ship is a non-code skip (exit `0`); a grammar-load or
+  parser-configuration failure for a shipped code language is not fail-open: it exits `1` with
+  `did not run`, because nothing was checked.
 - in JavaScript, TypeScript, TSX, and Java, `/** ... */` docstrings are only inspected when the
   file parses cleanly; any parse error in the tree skips them silently. Python docstrings are
   line-based and unaffected.
