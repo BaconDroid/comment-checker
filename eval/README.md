@@ -6,8 +6,21 @@ grow per-repo fixtures, regression cases, and measured baselines without a coord
 
 `baseline.py` is the D0 regression guard: it drives the built binary over a fixed set of hook
 payloads, asserts each one's exit code, and measures per-invocation wall time (process startup
-included — that is what a PostToolUse hook pays). Use it before/after a detector or classifier
+included - that is what a PostToolUse hook pays). Use it before/after a detector or classifier
 change to catch unintended behaviour or budget regressions.
+
+## Recording policy
+
+The gate is authoritative for the tagged release tree. A pull request does not re-record the
+baseline, and a source change that leaves `built_from` stale is not a reason to edit
+`eval/baseline.json`.
+
+Re-recording happens in the release block (`docs/roadmap.md`) immediately before tagging, on the
+merge commit; the tree measured is the tree that ships. `--record` writes that commit to
+`built_from`.
+
+If the gate refuses for provenance, do not re-record on the branch. Rebuild from the release tag's
+merge commit, re-record once, and commit `eval/baseline.json` in the release PR.
 
 ```bash
 cargo build --release
