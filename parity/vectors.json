@@ -12,6 +12,8 @@
       { "name": "missing-file-path", "input": "{\"tool_name\":\"Write\",\"tool_input\":{\"content\":\"# c\"}}", "exit": 0, "stderr_contains": "Skipping:" },
       { "name": "unknown-extension", "input": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"a.zzz\",\"content\":\"# c\"}}", "exit": 0, "stderr_contains": "Skipping:" },
       { "name": "suppression-marker", "input": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"a.py\",\"content\":\"# comment-checker: allow\\n# x\\n\"}}", "exit": 0, "stderr_contains": "Skipping:" },
+      { "name": "suppression-marker-in-string-literal", "input": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"a.py\",\"content\":\"x = \\\"comment-checker: allow\\\"\\n# calculate the sum\\n\"}}", "exit": 2 },
+      { "name": "suppression-marker-added-by-the-edit", "input": "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"a.py\",\"old_string\":\"print(1)\\n\",\"new_string\":\"print(1)\\n# comment-checker: allow\\n\"}}", "exit": 2 },
       { "name": "null-fields", "input": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"a.py\",\"content\":\"print(1)\",\"old_string\":null,\"new_string\":null}}", "exit": 0 },
       { "name": "crlf-content", "input": "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"a.py\",\"content\":\"print(1)\\r\\n\"}}", "exit": 0 },
       { "name": "multiedit-trigger", "input": "{\"tool_name\":\"MultiEdit\",\"tool_input\":{\"file_path\":\"a.py\",\"edits\":[{\"old_string\":\"x\",\"new_string\":\"# comment\\ny\"}]}}", "exit": 2 }

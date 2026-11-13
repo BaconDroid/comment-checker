@@ -382,6 +382,33 @@ fn cli_given_strip_respects_the_suppression_marker() -> std::io::Result<()> {
 }
 
 #[test]
+fn cli_given_strip_ignores_a_marker_inside_a_string_literal() -> std::io::Result<()> {
+    // given: the marker text is a string literal, so it is not a comment and suppresses nothing
+    let dir = TempDir::new("literal-marker")?;
+    let file = dir.path().join("j.py");
+    std::fs::write(
+        &file,
+        "x = \"comment-checker: allow\"\n# narration here\nprint(1)\n",
+    )?;
+
+    // when
+    let output = run_checker(&strip_payload("j.py", dir.path()), &["--strip"])?;
+
+    // then
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("strip: removed 1 flagged comment(s)"),
+        "stderr: {stderr}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&file)?,
+        "x = \"comment-checker: allow\"\nprint(1)\n"
+    );
+    Ok(())
+}
+
+#[test]
 fn cli_given_strip_analyzes_the_file_not_the_payload_content() -> std::io::Result<()> {
     // given: the on-disk file is clean, while the payload carries a comment
     let dir = TempDir::new("whole-file")?;
