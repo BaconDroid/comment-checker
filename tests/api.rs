@@ -121,6 +121,98 @@ fn check_hook_input_given_file_suppression_marker_skips() {
 }
 
 #[test]
+fn check_hook_input_given_marker_inside_a_string_literal_does_not_suppress() {
+    // given: the marker text is a Python string literal, not a comment
+    let input = r#"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"x = \"comment-checker: allow\"\n# calculate the sum\n"}}"#;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        result.message.contains("reason=\"unnecessary-comment\""),
+        "message: {}",
+        result.message
+    );
+}
+
+#[test]
+fn check_hook_input_given_marker_with_a_spared_class_and_justification_suppresses() {
+    // given
+    let input = r##"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"# comment-checker: allow bdd -- the fixture waits for a real server\n# calculate the sum\n"}}"##;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 0);
+    assert!(
+        result
+            .message
+            .contains("Suppressed by comment-checker: allow"),
+        "message: {}",
+        result.message
+    );
+}
+
+#[test]
+fn check_hook_input_given_marker_added_by_the_edit_reports_allow_added() {
+    // given: the same edit introduces the marker and the code it would suppress
+    let input = r#"{"tool_name":"Edit","tool_input":{"file_path":"a.py","old_string":"print(1)\n","new_string":"print(1)\n# comment-checker: allow\n"}}"#;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        result.message.contains("reason=\"allow-added\""),
+        "message: {}",
+        result.message
+    );
+}
+
+#[test]
+fn check_hook_input_given_marker_with_an_unknown_class_reports_allow_invalid() {
+    // given: `not-a-class` is not one of the spared class ids
+    let input = r##"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"# comment-checker: allow not-a-class -- because\n# calculate the sum\n"}}"##;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        result.message.contains("reason=\"allow-invalid\""),
+        "message: {}",
+        result.message
+    );
+    assert!(
+        !result.message.contains("Suppressed"),
+        "message: {}",
+        result.message
+    );
+}
+
+#[test]
+fn check_hook_input_given_marker_with_an_empty_justification_reports_allow_invalid() {
+    // given
+    let input = r##"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"# comment-checker: allow bdd --\n# calculate the sum\n"}}"##;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        result.message.contains("reason=\"allow-invalid\""),
+        "message: {}",
+        result.message
+    );
+}
+
+#[test]
 fn check_hook_input_given_unknown_tool_skips() {
     // given: a non-edit tool, which the hook matcher (Write|Edit|MultiEdit) never sends
     let input = r##"{"tool_name":"Read","tool_input":{"file_path":"test.py","content":"# comment\nprint(1)"}}"##;

@@ -159,11 +159,25 @@ a directive is not an acquittal: a `# noqa`-style directive does not excuse a co
 commented-out code, a vacuous `TODO`, an agent memo, or past-facing wording - a proven smell
 outranks a directive.
 
-`comment-checker: allow` is the exception: the hook checks it against the analyzed content before
-detection runs, so it suppresses all findings for it - the whole `Write` content, or the edited
-fragment for `Edit`/`MultiEdit`, including comments that would otherwise be proven violations. It
-is an escape hatch for the analyzed content, not a per-line one, and it is not read from the rest
-of the file on an edit.
+`comment-checker: allow` is the exception: a valid marker suppresses all findings for the analyzed
+content - the whole `Write` content, or the edited fragment for `Edit`/`MultiEdit` - including
+comments that would otherwise be proven violations. It is an escape hatch for the analyzed content,
+not a per-line one, and it is not read from the rest of the file on an edit.
+
+A marker counts only when it is a comment the detector reports: the marker text inside a string
+literal suppresses nothing and is not reported as a marker. Two forms are valid:
+
+- `comment-checker: allow` - suppresses the whole analyzed fragment.
+- `comment-checker: allow <reason-class> -- <justification>` - suppresses the whole analyzed
+  fragment and names which spare rule it substitutes for. `<reason-class>` is one of
+  `license-header`, `generated-file`, `public-api-doc`, `attribution`, `bdd`, `directive`,
+  `shebang`, and the justification must not be empty.
+
+A marker on a line this change added is inert and reported as `allow-added`: the same edit cannot
+silence the comment it just introduced. A payload with no base text (`Write`, or an `Edit` with an
+empty `old_string`) has no added-line set, so its marker suppresses as before. A marker with an
+unknown reason class, no `--`, or an empty justification is reported as `allow-invalid` and
+suppresses nothing.
 
 ## reasons
 
@@ -178,6 +192,8 @@ every reported comment is a `<comment>` element with a `reason` attribute:
 | `unnecessary-comment` | the default: no spare rule matched |
 | `restates-code: <evidence>` | whole-file `Write` only: the comment repeats adjacent code |
 | `narrates-control-flow` | whole-file `Write` only: the comment narrates a nearby loop |
+| `allow-added` | the comment is a suppression marker on a line this change added, so it suppresses nothing |
+| `allow-invalid` | the comment is a malformed suppression marker: unknown reason class, no `--`, or an empty justification |
 
 Detection is deny-by-default: a comment is reported unless a spare rule matches. On a whole-file
 `Write` the contextual check can refine a generic reason and can overrule the prose-keyword
