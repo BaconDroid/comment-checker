@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::detector::{CommentDetector, DetectError};
 use crate::engine::{self, null_default};
-use crate::filters::{analyze_suppression, apply_filters_with_markers, apply_min_confidence};
+use crate::filters::{
+    SuppressionConfig, analyze_suppression, apply_filters_with_markers, apply_min_confidence,
+};
 use crate::language::language_for_path;
 use crate::models::{CommentInfo, Edit};
 use crate::output::format_hook_message;
@@ -270,8 +272,9 @@ fn evaluate(
             true,
         );
     }
+    let config = SuppressionConfig::load(Some(hook_input.cwd.as_str()));
     let filtered = apply_min_confidence(
-        apply_filters_with_markers(&checked.comments, &checked.marker_reasons),
+        apply_filters_with_markers(&checked.comments, &checked.marker_reasons, &config),
         min_confidence,
     );
     if filtered.is_empty() {
@@ -423,8 +426,9 @@ fn evaluate_strip(
     }
 
     crate::filters::contextualize(&mut comments, &content, true);
+    let config = SuppressionConfig::load(Some(hook_input.cwd.as_str()));
     let filtered = apply_min_confidence(
-        apply_filters_with_markers(&comments, &analysis.marker_reasons),
+        apply_filters_with_markers(&comments, &analysis.marker_reasons, &config),
         min_confidence,
     );
     if filtered.is_empty() {

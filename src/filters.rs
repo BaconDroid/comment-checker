@@ -1,9 +1,14 @@
 use std::collections::HashSet;
 
+use serde::Deserialize;
+
 use crate::engine;
 use crate::models::{CommentInfo, CommentType, Severity};
 
 const SUPPRESSION_MARKER: &str = "comment-checker: allow";
+
+/// The committed directory-exemption config, read from the git root.
+pub(crate) const CONFIG_FILE_NAME: &str = ".comment-checker.json";
 
 /// Reasons reported for a suppression marker that does not supplant the change it rides in.
 const ALLOW_ADDED_REASON: &str = "allow-added";
@@ -954,19 +959,205 @@ pub(crate) fn contextualize(comments: &mut [CommentInfo], content: &str, reliabl
     }
 }
 
-#[must_use]
-pub fn apply_filters(comments: &[CommentInfo]) -> Vec<CommentInfo> {
-    apply_filters_with_markers(comments, &[])
+/// A validated `.comment-checker.json` directory exemption.
+#[derive(Debug)]
+struct ConfigAllow {
+    glob: String,
+    reasons: Vec<String>,
 }
 
-/// Like [`apply_filters`], with the marker reasons from [`analyze_suppression`] aligned by index.
+#[derive(Debug, Default, Deserialize)]
+struct ConfigFile {
+    #[serde(default)]
+    allow: Vec<ConfigEntry>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ConfigEntry {
+    #[serde(default)]
+    glob: String,
+    #[serde(default)]
+    reasons: Vec<String>,
+    #[serde(default)]
+    reason: String,
+}
+
+/// The committed directory exemptions from `<git root>/.comment-checker.json`.
+#[derive(Debug, Default)]
+pub(crate) struct SuppressionConfig {
+    entries: Vec<ConfigAllow>,
+    root: Option<String>,
+}
+
+impl SuppressionConfig {
+    /// Read the config from the git root that contains the payload `cwd`.
+    ///
+    /// The walk stops at the first ancestor holding `.git`; a config in any other directory is
+    /// ignored. A missing, unreadable, or malformed file yields no exemptions, and an entry with
+    /// a blank glob, no reasons, or a blank reason is dropped.
+    pub(crate) fn load(cwd: Option<&str>) -> Self {
+        let base = cwd
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .or_else(|| {
+                std::env::current_dir()
+                    .ok()
+                    .map(|path| path.to_string_lossy().into_owned())
+            });
+        let Some(base) = base else {
+            return Self::default();
+        };
+        let Some(root) = git_root(std::path::Path::new(&base)) else {
+            return Self::default();
+        };
+        let root_text = root.to_string_lossy().into_owned();
+        let path = root.join(CONFIG_FILE_NAME);
+        let empty = Self {
+            entries: Vec::new(),
+            root: Some(root_text),
+        };
+        if !path.is_file() {
+            return empty;
+        }
+        let Ok(raw) = std::fs::read_to_string(&path) else {
+            return empty;
+        };
+        let Ok(config) = serde_json::from_str::<ConfigFile>(&raw) else {
+            return empty;
+        };
+        let entries = config
+            .allow
+            .iter()
+            .filter_map(|entry| {
+                let glob = entry.glob.trim().to_owned();
+                let reasons = entry
+                    .reasons
+                    .iter()
+                    .map(|reason| reason.trim().to_owned())
+                    .filter(|reason| !reason.is_empty())
+                    .collect::<Vec<_>>();
+                if glob.is_empty() || reasons.is_empty() || entry.reason.trim().is_empty() {
+                    return None;
+                }
+                Some(ConfigAllow { glob, reasons })
+            })
+            .collect();
+        Self {
+            entries,
+            root: empty.root,
+        }
+    }
+
+    /// Whether an `allow` entry exempts `reason` for `file_path`.
+    fn exempts(&self, file_path: &str, reason: &str) -> bool {
+        if self.entries.is_empty() {
+            return false;
+        }
+        let relative = relative_to_cwd(file_path, self.root.as_deref());
+        self.entries.iter().any(|entry| {
+            glob_matches(&entry.glob, &relative)
+                && entry.reasons.iter().any(|listed| {
+                    listed == reason
+                        || (listed == "restates-code" && reason.starts_with("restates-code:"))
+                })
+        })
+    }
+}
+
+/// The first ancestor of `start` (inclusive) that contains a `.git` entry.
+fn git_root(start: &std::path::Path) -> Option<std::path::PathBuf> {
+    let mut dir = start;
+    loop {
+        if dir.join(".git").exists() {
+            return Some(dir.to_path_buf());
+        }
+        dir = dir.parent()?;
+    }
+}
+
+/// `file_path` with separators normalised and `cwd` stripped when it prefixes the path.
+fn relative_to_cwd(file_path: &str, cwd: Option<&str>) -> String {
+    let file = normalize_path(file_path);
+    let Some(base) = cwd.map(normalize_path) else {
+        return file;
+    };
+    let base = base.trim_end_matches('/');
+    if file == base {
+        return String::new();
+    }
+    file.strip_prefix(base)
+        .and_then(|rest| rest.strip_prefix('/'))
+        .map_or_else(|| file.clone(), ToOwned::to_owned)
+}
+
+fn normalize_path(path: &str) -> String {
+    let path = path.replace('\\', "/");
+    path.strip_prefix("./")
+        .map_or_else(|| path.clone(), ToOwned::to_owned)
+}
+
+/// Match a `/`-separated path glob. `**` matches zero or more path segments; `*` and `?` match
+/// within one segment.
+fn glob_matches(pattern: &str, path: &str) -> bool {
+    let pattern = normalize_path(pattern);
+    let pattern: Vec<&str> = pattern
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    let path: Vec<&str> = path
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    match_segments(&pattern, &path)
+}
+
+fn match_segments(pattern: &[&str], path: &[&str]) -> bool {
+    match pattern.split_first() {
+        None => path.is_empty(),
+        Some((&"**", rest)) => (0..=path.len()).any(|index| match_segments(rest, &path[index..])),
+        Some((segment, rest)) => path.split_first().is_some_and(|(path_segment, path_rest)| {
+            segment_matches(segment, path_segment) && match_segments(rest, path_rest)
+        }),
+    }
+}
+
+fn segment_matches(pattern: &str, text: &str) -> bool {
+    let pattern: Vec<char> = pattern.chars().collect();
+    let text: Vec<char> = text.chars().collect();
+    let mut matched = vec![vec![false; text.len() + 1]; pattern.len() + 1];
+    matched[0][0] = true;
+    for row in 0..pattern.len() {
+        if pattern[row] == '*' {
+            matched[row + 1][0] = matched[row][0];
+        }
+        for column in 0..text.len() {
+            matched[row + 1][column + 1] = match pattern[row] {
+                '*' => matched[row][column + 1] || matched[row + 1][column],
+                '?' => matched[row][column],
+                character => matched[row][column] && character == text[column],
+            };
+        }
+    }
+    matched[pattern.len()][text.len()]
+}
+
+#[must_use]
+pub fn apply_filters(comments: &[CommentInfo]) -> Vec<CommentInfo> {
+    apply_filters_with_markers(comments, &[], &SuppressionConfig::default())
+}
+
+/// Like [`apply_filters`], with the marker reasons from [`analyze_suppression`] aligned by index
+/// and the directory exemptions from the config.
 ///
 /// A marker comment is reported with its `allow-added`/`allow-invalid` reason instead of being
-/// spared; every other comment goes through the normal spare/flag rules.
+/// spared; every other comment goes through the normal spare/flag rules, and a comment whose
+/// reason an `allow` entry names for its path is spared.
 #[must_use]
 pub(crate) fn apply_filters_with_markers(
     comments: &[CommentInfo],
     marker_reasons: &[Option<&'static str>],
+    config: &SuppressionConfig,
 ) -> Vec<CommentInfo> {
     let keyword_acquit = keyword_acquit_mode();
     comments
@@ -988,6 +1179,9 @@ pub(crate) fn apply_filters_with_markers(
                 .filter(|reason| is_contextual_reason(reason))
                 .cloned()
                 .unwrap_or_else(|| reason_for(comment).to_owned());
+            if config.exempts(kept.file_path.as_str(), &reason) {
+                return None;
+            }
             kept.metadata.insert("reason".to_owned(), reason);
             Some(kept)
         })
@@ -1011,7 +1205,113 @@ pub(crate) fn apply_filters_with_markers(
 
 #[cfg(test)]
 mod tests {
-    use super::{INTENT_MARKERS, is_agent_memo_phrase};
+    use super::{CONFIG_FILE_NAME, INTENT_MARKERS, SuppressionConfig, is_agent_memo_phrase};
+
+    fn temp_git_root(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "cc-b1-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+        dir
+    }
+
+    #[test]
+    fn suppression_config_exempts_the_matching_reason_for_the_matching_glob() {
+        // given: a git root whose config exempts agent-memo under tests/**
+        let root = temp_git_root("match");
+        std::fs::write(
+            root.join(CONFIG_FILE_NAME),
+            r#"{"allow":[{"glob":"tests/**","reasons":["agent-memo"],"reason":"legacy suite notes"}]}"#,
+        )
+        .unwrap();
+
+        // when
+        let config = SuppressionConfig::load(Some(root.to_string_lossy().as_ref()));
+
+        // then: the covered path and reason are exempt; neighbouring paths and reasons are not
+        assert!(config.exempts("tests/api.rs", "agent-memo"));
+        assert!(config.exempts("tests/nested/api.rs", "agent-memo"));
+        assert!(!config.exempts("src/api.rs", "agent-memo"));
+        assert!(!config.exempts("tests/api.rs", "past-facing"));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn suppression_config_matches_restates_code_by_prefix() {
+        // given
+        let root = temp_git_root("restates");
+        std::fs::write(
+            root.join(CONFIG_FILE_NAME),
+            r#"{"allow":[{"glob":"**/*.py","reasons":["restates-code"],"reason":"copied upstream"}]}"#,
+        )
+        .unwrap();
+
+        // when
+        let config = SuppressionConfig::load(Some(root.to_string_lossy().as_ref()));
+
+        // then: the class entry covers every contextual restates-code reason
+        assert!(config.exempts("src/app.py", "restates-code: shared tokens"));
+        assert!(!config.exempts("src/app.py", "narrates-control-flow"));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn suppression_config_drops_malformed_entries() {
+        // given: three malformed entries and one valid one
+        let root = temp_git_root("malformed");
+        std::fs::write(
+            root.join(CONFIG_FILE_NAME),
+            r#"{"allow":[
+                {"glob":"","reasons":["agent-memo"],"reason":"valid reason"},
+                {"glob":"tests/**","reasons":["agent-memo"],"reason":"   "},
+                {"glob":"tests/**","reasons":[],"reason":"valid reason"},
+                {"glob":"tests/**","reasons":["agent-memo"],"reason":"valid reason"}
+            ]}"#,
+        )
+        .unwrap();
+
+        // when
+        let config = SuppressionConfig::load(Some(root.to_string_lossy().as_ref()));
+
+        // then: only the fully valid entry survives (blank glob and blank reason dropped)
+        assert_eq!(config.entries.len(), 1);
+        assert!(config.exempts("tests/a.py", "agent-memo"));
+        assert!(!config.exempts("tests/a.py", "past-facing"));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn suppression_config_without_git_root_or_valid_file_yields_nothing() {
+        // given: a directory with no .git ancestor we control, and a malformed file at a root
+        let bare = std::env::temp_dir().join(format!("cc-b1-bare-{}", std::process::id()));
+        std::fs::create_dir_all(&bare).unwrap();
+        let malformed = temp_git_root("malformed-json");
+        std::fs::write(malformed.join(CONFIG_FILE_NAME), "{not json").unwrap();
+
+        // when
+        let missing = SuppressionConfig::load(Some(bare.to_string_lossy().as_ref()));
+        let broken = SuppressionConfig::load(Some(malformed.to_string_lossy().as_ref()));
+
+        // then
+        assert!(missing.entries.is_empty());
+        assert!(broken.entries.is_empty());
+        std::fs::remove_dir_all(&bare).unwrap();
+        std::fs::remove_dir_all(&malformed).unwrap();
+    }
+
+    #[test]
+    fn glob_segments_match_within_one_segment_and_double_star_covers_depth() {
+        // then: `*` never crosses a separator, `**` does
+        assert!(super::glob_matches("tests/**", "tests/a/b.py"));
+        assert!(super::glob_matches("*.py", "a.py"));
+        assert!(!super::glob_matches("*.py", "tests/a.py"));
+        assert!(super::glob_matches("**/*.py", "tests/a.py"));
+    }
 
     /// Guard: a carried sf intent marker that is also an agent-memo phrase would silently acquit a
     /// memo (the `note:` regression). Keep the two catalogs disjoint.
