@@ -87,6 +87,7 @@ ALIASES = {
     "Finding": "Item",
     "CommentType": "Kind",
     "Confidence": "Kind",
+    "Severity": "Kind",
     "build_comments_xml": "build_xml",
     "build_findings_xml": "build_xml",
     "detect_comments_json": "detect_json",
@@ -126,7 +127,8 @@ SHAPE = {
 # Documented per-repo extras (canonical names) beyond SHAPE.
 EXTRAS = {
     "comment-checker": {
-        "filters": {"AgentMemoFilter", "is_agent_memo"},
+        "filters": {"AgentMemoFilter", "is_agent_memo", "severity_for_reason"},
+        "models": {"as_str"},
     },
     "test-checker": {
         "detector": set(),
