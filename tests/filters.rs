@@ -1,8 +1,8 @@
 use comment_checker::filters::{
     AgentMemoFilter, BddFilter, DirectiveFilter, ShebangFilter, SuppressionFilter, apply_filters,
-    is_line_suppressed,
+    is_line_suppressed, severity_for_reason,
 };
-use comment_checker::models::{CommentInfo, CommentType};
+use comment_checker::models::{CommentInfo, CommentType, Severity};
 
 fn line(text: &str) -> CommentInfo {
     CommentInfo::new(text, 1, "test.py", CommentType::Line, false)
@@ -638,5 +638,51 @@ fn per_kind_floor_trips_on_a_kind_level_regression() {
     assert!(
         !violations.is_empty(),
         "the floor must catch a kind-level regression"
+    );
+}
+
+#[test]
+fn severity_for_reason_maps_each_reason_class_to_its_tier() {
+    // The tier table is the roadmap contract (Block A): asserted literal, not derived from the
+    // implementation, so a mapping change fails here.
+    let cases = [
+        ("commented-out-code", "high"),
+        ("vacuous-todo", "high"),
+        ("agent-memo", "high"),
+        ("past-facing", "high"),
+        ("narrates-control-flow", "medium"),
+        ("restates-code: shared tokens", "medium"),
+        ("unnecessary-comment", "low"),
+    ];
+    for (reason, tier) in cases {
+        assert_eq!(
+            severity_for_reason(reason).map(Severity::as_str),
+            Some(tier),
+            "tier for {reason}",
+        );
+    }
+    // Marker bookkeeping and future reasons carry no tier.
+    assert_eq!(severity_for_reason("allow-added"), None);
+    assert_eq!(severity_for_reason("allow-invalid"), None);
+    assert_eq!(severity_for_reason("some-future-reason"), None);
+}
+
+#[test]
+fn apply_filters_carries_the_severity_tier_in_metadata() {
+    // given: a flagged comment whose reason class is low (a prose comment next to no evidence)
+    let comment = line("# if you need to skip this");
+
+    // when
+    let result = apply_filters(&[comment]);
+
+    // then
+    assert_eq!(result.len(), 1);
+    assert_eq!(
+        result[0].metadata.get("reason").map(String::as_str),
+        Some("unnecessary-comment"),
+    );
+    assert_eq!(
+        result[0].metadata.get("severity").map(String::as_str),
+        Some("low"),
     );
 }

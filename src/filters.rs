@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::engine;
-use crate::models::{CommentInfo, CommentType};
+use crate::models::{CommentInfo, CommentType, Severity};
 
 const SUPPRESSION_MARKER: &str = "comment-checker: allow";
 
@@ -656,6 +656,25 @@ fn reason_for(comment: &CommentInfo) -> &'static str {
     }
 }
 
+/// The severity a reported reason carries.
+///
+/// Proven content smells read high, the adjacency-dependent contextual reasons read medium
+/// because their evidence needs a whole-file `Write`, and the residual prose reason reads low.
+/// Marker bookkeeping (`allow-added`, `allow-invalid`) and future unclassified reasons carry
+/// no tier.
+#[must_use]
+pub fn severity_for_reason(reason: &str) -> Option<Severity> {
+    match reason {
+        "commented-out-code" | "vacuous-todo" | "agent-memo" | "past-facing" => {
+            Some(Severity::High)
+        }
+        "narrates-control-flow" => Some(Severity::Medium),
+        "unnecessary-comment" => Some(Severity::Low),
+        _ if reason.starts_with("restates-code:") => Some(Severity::Medium),
+        _ => None,
+    }
+}
+
 fn is_spared(comment: &CommentInfo, keyword_acquit: KeywordAcquitMode) -> bool {
     if is_structurally_justified(comment)
         || BddFilter.should_skip(comment)
@@ -939,6 +958,21 @@ pub(crate) fn apply_filters_with_markers(
                 .unwrap_or_else(|| reason_for(comment).to_owned());
             kept.metadata.insert("reason".to_owned(), reason);
             Some(kept)
+        })
+        .collect::<Vec<_>>()
+        .into_iter()
+        .map(|mut comment| {
+            let severity = comment
+                .metadata
+                .get("reason")
+                .map(String::as_str)
+                .and_then(severity_for_reason);
+            if let Some(severity) = severity {
+                comment
+                    .metadata
+                    .insert("severity".to_owned(), severity.as_str().to_owned());
+            }
+            comment
         })
         .collect()
 }
