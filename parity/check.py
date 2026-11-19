@@ -127,7 +127,7 @@ SHAPE = {
 # Documented per-repo extras (canonical names) beyond SHAPE.
 EXTRAS = {
     "comment-checker": {
-        "filters": {"AgentMemoFilter", "is_agent_memo", "severity_for_reason"},
+        "filters": {"AgentMemoFilter", "is_agent_memo", "severity_for_reason", "apply_min_confidence"},
         "models": {"as_str"},
     },
     "test-checker": {
