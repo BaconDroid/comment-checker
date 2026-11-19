@@ -21,6 +21,36 @@ fn suppression_filter_given_marker_returns_true() {
 }
 
 #[test]
+fn is_line_suppressed_given_a_spared_class_and_justification_returns_true() {
+    // given
+    let texts = [
+        "# comment-checker: allow license-header -- vendored notice kept verbatim",
+        "// comment-checker: allow generated-file -- produced by protoc",
+        "/* comment-checker: allow bdd -- waits for the fixture */",
+    ];
+
+    // when / then
+    for text in texts {
+        assert!(is_line_suppressed(text), "text: {text}");
+    }
+}
+
+#[test]
+fn is_line_suppressed_given_an_unknown_class_or_empty_justification_returns_false() {
+    // given
+    let texts = [
+        "# comment-checker: allow not-a-class -- because",
+        "# comment-checker: allow bdd --",
+        "# comment-checker: allow bdd because",
+    ];
+
+    // when / then
+    for text in texts {
+        assert!(!is_line_suppressed(text), "text: {text}");
+    }
+}
+
+#[test]
 fn bdd_filter_given_keyword_returns_true() {
     // given
     let filter = BddFilter;

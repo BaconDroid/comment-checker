@@ -1,7 +1,24 @@
+use std::collections::HashSet;
+
 use crate::engine;
 use crate::models::{CommentInfo, CommentType};
 
 const SUPPRESSION_MARKER: &str = "comment-checker: allow";
+
+/// Reasons reported for a suppression marker that does not supplant the change it rides in.
+const ALLOW_ADDED_REASON: &str = "allow-added";
+const ALLOW_INVALID_REASON: &str = "allow-invalid";
+
+/// The spared classes a marker may name as its reason class, one id per spare rule.
+const SPARED_CLASSES: &[&str] = &[
+    "license-header",
+    "generated-file",
+    "public-api-doc",
+    "attribution",
+    "bdd",
+    "directive",
+    "shebang",
+];
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct BddFilter;
@@ -54,13 +71,129 @@ impl SuppressionFilter {
 
     #[must_use]
     pub fn is_file_suppressed(&self, content: &str) -> bool {
-        engine::is_file_suppressed(content, SUPPRESSION_MARKER)
+        content.lines().any(is_line_suppressed)
     }
 }
 
+/// Whether the text carries a syntactically valid suppression marker.
 #[must_use]
 pub fn is_line_suppressed(text: &str) -> bool {
-    engine::is_line_suppressed(text, SUPPRESSION_MARKER)
+    marker_offset(text).is_some_and(|offset| marker_validity(text, offset) == MarkerValidity::Valid)
+}
+
+/// Whether the marker tail names a spared class and a non-empty justification.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MarkerValidity {
+    Valid,
+    Invalid,
+}
+
+fn marker_offset(text: &str) -> Option<usize> {
+    text.to_ascii_lowercase().find(SUPPRESSION_MARKER)
+}
+
+/// Classify the marker whose start is `offset` in `text`.
+///
+/// `comment-checker: allow` is valid on its own; the long form is
+/// `comment-checker: allow <reason-class> -- <justification>`, where the class is one of
+/// [`SPARED_CLASSES`].
+fn marker_validity(text: &str, offset: usize) -> MarkerValidity {
+    let rest = trim_comment_terminator(&text[offset + SUPPRESSION_MARKER.len()..]);
+    if rest.is_empty() {
+        return MarkerValidity::Valid;
+    }
+    let Some((class, justification)) = rest.split_once("--") else {
+        return MarkerValidity::Invalid;
+    };
+    let class = class.trim();
+    let justification = justification.trim();
+    if !SPARED_CLASSES
+        .iter()
+        .any(|known| known.eq_ignore_ascii_case(class))
+        || justification.is_empty()
+    {
+        return MarkerValidity::Invalid;
+    }
+    MarkerValidity::Valid
+}
+
+fn trim_comment_terminator(text: &str) -> &str {
+    let text = text.trim();
+    for suffix in ["*/", "-->", "*)", "\"\"\"", "'''"] {
+        if let Some(head) = text.strip_suffix(suffix) {
+            return head.trim();
+        }
+    }
+    text
+}
+
+/// Whether the detected item is a comment node rather than a string-literal docstring.
+///
+/// Python docstrings are string literals, so marker text inside them is text, not a comment. The
+/// JavaScript/Java docstrings come from the grammar's comment query and keep comment syntax.
+fn is_comment_node(comment: &CommentInfo) -> bool {
+    comment.comment_type != CommentType::Docstring || comment.text.trim_start().starts_with("/**")
+}
+
+/// The marker-level outcome for one analyzed fragment.
+#[derive(Debug, Default)]
+pub(crate) struct SuppressionAnalysis {
+    /// A valid marker outside an added line suppresses the whole fragment.
+    pub(crate) suppressed: bool,
+    /// The report reason for a marker comment, aligned with the analyzed comment slice.
+    pub(crate) marker_reasons: Vec<Option<&'static str>>,
+}
+
+/// Analyze the markers carried by host comment nodes in `content`.
+///
+/// A marker only counts when it sits inside a comment node's byte span, so the same text inside a
+/// string literal does nothing. `added` is the set of 0-based lines this change added; `None` means
+/// no line counts as added (a whole-file write, or a fragment with no base text).
+pub(crate) fn analyze_suppression(
+    content: &str,
+    comments: &[CommentInfo],
+    added: Option<&HashSet<usize>>,
+) -> SuppressionAnalysis {
+    let mut analysis = SuppressionAnalysis {
+        suppressed: false,
+        marker_reasons: vec![None; comments.len()],
+    };
+    for (index, comment) in comments.iter().enumerate() {
+        if !is_comment_node(comment) {
+            continue;
+        }
+        let Some(offset) = marker_offset(&comment.text) else {
+            continue;
+        };
+        match marker_validity(&comment.text, offset) {
+            MarkerValidity::Invalid => analysis.marker_reasons[index] = Some(ALLOW_INVALID_REASON),
+            MarkerValidity::Valid => {
+                let row = marker_row(content, comment, offset);
+                if added.is_some_and(|lines| lines.contains(&row)) {
+                    analysis.marker_reasons[index] = Some(ALLOW_ADDED_REASON);
+                } else {
+                    analysis.suppressed = true;
+                }
+            }
+        }
+    }
+    analysis
+}
+
+/// The 0-based host line carrying the marker `offset` bytes into `comment`.
+///
+/// A host capture's span gives the exact host byte. An injected capture indexes injected text, so
+/// its start line plus the newlines inside the comment is the host line.
+fn marker_row(content: &str, comment: &CommentInfo, offset: usize) -> usize {
+    if let Some((start, end)) = comment.byte_span {
+        if start <= end
+            && end <= content.len()
+            && content.get(start..end) == Some(comment.text.as_str())
+        {
+            return content[..start + offset].matches('\n').count();
+        }
+    }
+    comment.line_number.saturating_sub(1) + comment.text[..offset].matches('\n').count()
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -772,11 +905,31 @@ pub(crate) fn contextualize(comments: &mut [CommentInfo], content: &str, reliabl
 
 #[must_use]
 pub fn apply_filters(comments: &[CommentInfo]) -> Vec<CommentInfo> {
+    apply_filters_with_markers(comments, &[])
+}
+
+/// Like [`apply_filters`], with the marker reasons from [`analyze_suppression`] aligned by index.
+///
+/// A marker comment is reported with its `allow-added`/`allow-invalid` reason instead of being
+/// spared; every other comment goes through the normal spare/flag rules.
+#[must_use]
+pub(crate) fn apply_filters_with_markers(
+    comments: &[CommentInfo],
+    marker_reasons: &[Option<&'static str>],
+) -> Vec<CommentInfo> {
     let keyword_acquit = keyword_acquit_mode();
     comments
         .iter()
-        .filter(|comment| !is_spared(comment, keyword_acquit))
-        .map(|comment| {
+        .enumerate()
+        .filter_map(|(index, comment)| {
+            if let Some(reason) = marker_reasons.get(index).copied().flatten() {
+                let mut kept = comment.clone();
+                kept.metadata.insert("reason".to_owned(), reason.to_owned());
+                return Some(kept);
+            }
+            if is_spared(comment, keyword_acquit) {
+                return None;
+            }
             let mut kept = comment.clone();
             let reason = comment
                 .metadata
@@ -785,7 +938,7 @@ pub fn apply_filters(comments: &[CommentInfo]) -> Vec<CommentInfo> {
                 .cloned()
                 .unwrap_or_else(|| reason_for(comment).to_owned());
             kept.metadata.insert("reason".to_owned(), reason);
-            kept
+            Some(kept)
         })
         .collect()
 }

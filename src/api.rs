@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::detector::{CommentDetector, DetectError};
 use crate::engine::{self, null_default};
-use crate::filters::{SuppressionFilter, apply_filters};
+use crate::filters::{analyze_suppression, apply_filters_with_markers};
 use crate::language::language_for_path;
 use crate::models::{CommentInfo, Edit};
 use crate::output::format_hook_message;
@@ -191,71 +191,141 @@ fn evaluate(hook_input: &HookInput, custom_prompt: &str, include_docstrings: boo
         return HookOutcome::Skipped("File too large".to_owned());
     }
 
-    let suppression = SuppressionFilter;
-    let suppressed = match tool {
-        ToolKind::Edit if hook_input.tool_input.edits.is_empty() => {
-            suppression.is_file_suppressed(&hook_input.tool_input.new_string)
-        }
-        ToolKind::Edit | ToolKind::MultiEdit => hook_input
-            .tool_input
-            .edits
-            .iter()
-            .any(|edit| suppression.is_file_suppressed(&edit.new_string)),
-        ToolKind::Write => suppression.is_file_suppressed(get_content_to_check(hook_input)),
-    };
-    if suppressed {
-        return HookOutcome::Skipped("Suppressed by comment-checker: allow".to_owned());
-    }
-
-    let comments = match tool {
+    let mut checked = match tool {
         ToolKind::Edit if hook_input.tool_input.edits.is_empty() => {
             if hook_input.tool_input.new_string.is_empty() {
                 return HookOutcome::Skipped("No content to check".to_owned());
             }
-            CommentDetector::detect_edit_checked(
+            match check_edit_fragment(
                 &hook_input.tool_input.old_string,
                 &hook_input.tool_input.new_string,
                 file_path,
                 include_docstrings,
-            )
+            ) {
+                Ok(fragment) => fragment,
+                Err(error) => return detect_failure(error),
+            }
         }
         ToolKind::Edit | ToolKind::MultiEdit => {
             if hook_input.tool_input.edits.is_empty() {
                 return HookOutcome::Skipped("No content to check".to_owned());
             }
-            edits_comments(&hook_input.tool_input.edits, file_path, include_docstrings)
+            let mut merged = FragmentCheck::default();
+            for edit in &hook_input.tool_input.edits {
+                if edit.new_string.is_empty() {
+                    continue;
+                }
+                match check_edit_fragment(
+                    &edit.old_string,
+                    &edit.new_string,
+                    file_path,
+                    include_docstrings,
+                ) {
+                    Ok(fragment) => merged.merge(fragment),
+                    Err(error) => return detect_failure(error),
+                }
+            }
+            merged
         }
         ToolKind::Write => {
             let content = get_content_to_check(hook_input);
             if content.is_empty() {
                 return HookOutcome::Skipped("No content to check".to_owned());
             }
-            CommentDetector::detect_checked(content, file_path, include_docstrings)
+            match check_write_fragment(content, file_path, include_docstrings) {
+                Ok(fragment) => fragment,
+                Err(error) => return detect_failure(error),
+            }
         }
-    };
-    let comments = match comments {
-        Ok(comments) => comments,
-        Err(DetectError::BudgetExceeded) => {
-            return HookOutcome::Skipped("Parse budget exceeded".to_owned());
-        }
-        Err(DetectError::Internal(reason)) => return HookOutcome::Failed(reason),
     };
 
-    if comments.is_empty() {
+    if checked.suppressed {
+        return HookOutcome::Skipped("Suppressed by comment-checker: allow".to_owned());
+    }
+    if checked.comments.is_empty() {
         return HookOutcome::Clean;
     }
 
     // A whole-file Write gives trustworthy neighbours; an Edit/MultiEdit fragment does not.
-    let mut comments = comments;
     if tool == ToolKind::Write {
-        crate::filters::contextualize(&mut comments, get_content_to_check(hook_input), true);
+        crate::filters::contextualize(
+            &mut checked.comments,
+            get_content_to_check(hook_input),
+            true,
+        );
     }
-    let filtered = apply_filters(&comments);
+    let filtered = apply_filters_with_markers(&checked.comments, &checked.marker_reasons);
     if filtered.is_empty() {
         return HookOutcome::Clean;
     }
 
     HookOutcome::Findings(format_hook_message(&filtered, custom_prompt))
+}
+
+/// One analyzed fragment: the comments the hook reports, their marker reasons, and whether a
+/// valid marker suppresses the fragment.
+#[derive(Default)]
+struct FragmentCheck {
+    comments: Vec<CommentInfo>,
+    marker_reasons: Vec<Option<&'static str>>,
+    suppressed: bool,
+}
+
+impl FragmentCheck {
+    fn merge(&mut self, other: Self) {
+        self.comments.extend(other.comments);
+        self.marker_reasons.extend(other.marker_reasons);
+        self.suppressed |= other.suppressed;
+    }
+}
+
+fn check_write_fragment(
+    content: &str,
+    file_path: &str,
+    include_docstrings: bool,
+) -> Result<FragmentCheck, DetectError> {
+    let comments = CommentDetector::detect_checked(content, file_path, include_docstrings)?;
+    let analysis = analyze_suppression(content, &comments, None);
+    Ok(FragmentCheck {
+        comments,
+        marker_reasons: analysis.marker_reasons,
+        suppressed: analysis.suppressed,
+    })
+}
+
+fn check_edit_fragment(
+    old_string: &str,
+    new_string: &str,
+    file_path: &str,
+    include_docstrings: bool,
+) -> Result<FragmentCheck, DetectError> {
+    let comments = CommentDetector::detect_checked(new_string, file_path, include_docstrings)?;
+    // An empty base text is a whole-file write, where no line counts as added.
+    let added = (!old_string.is_empty()).then(|| engine::added_lines(old_string, new_string));
+    let analysis = analyze_suppression(new_string, &comments, added.as_ref());
+    let mut checked = FragmentCheck {
+        suppressed: analysis.suppressed,
+        ..FragmentCheck::default()
+    };
+    for (index, comment) in comments.into_iter().enumerate() {
+        let introduced = added
+            .as_ref()
+            .is_none_or(|lines| lines.contains(&comment.line_number.saturating_sub(1)));
+        if introduced {
+            checked.comments.push(comment);
+            checked
+                .marker_reasons
+                .push(analysis.marker_reasons.get(index).copied().flatten());
+        }
+    }
+    Ok(checked)
+}
+
+fn detect_failure(error: DetectError) -> HookOutcome {
+    match error {
+        DetectError::BudgetExceeded => HookOutcome::Skipped("Parse budget exceeded".to_owned()),
+        DetectError::Internal(reason) => HookOutcome::Failed(reason),
+    }
 }
 
 /// Run the removal pass over the target file.
@@ -303,32 +373,32 @@ fn evaluate_strip(
             "not rewritten - the file is over the inspect limit",
         );
     }
-    if SuppressionFilter.is_file_suppressed(&content) {
+    let mut comments =
+        match CommentDetector::detect_checked(&content, file_path, include_docstrings) {
+            Ok(comments) => comments,
+            Err(DetectError::BudgetExceeded) => {
+                return strip_message(
+                    &HookOutcome::Skipped("Parse budget exceeded".to_owned()),
+                    "not rewritten - parse budget exceeded",
+                );
+            }
+            Err(DetectError::Internal(reason)) => {
+                return strip_message(
+                    &HookOutcome::Failed(reason),
+                    "not rewritten - the check did not run",
+                );
+            }
+        };
+    let analysis = analyze_suppression(&content, &comments, None);
+    if analysis.suppressed {
         return strip_message(
             &HookOutcome::Skipped("Suppressed by comment-checker: allow".to_owned()),
             &format!("{} left untouched - suppressed", target.display()),
         );
     }
 
-    let comments = match CommentDetector::detect_checked(&content, file_path, include_docstrings) {
-        Ok(comments) => comments,
-        Err(DetectError::BudgetExceeded) => {
-            return strip_message(
-                &HookOutcome::Skipped("Parse budget exceeded".to_owned()),
-                "not rewritten - parse budget exceeded",
-            );
-        }
-        Err(DetectError::Internal(reason)) => {
-            return strip_message(
-                &HookOutcome::Failed(reason),
-                "not rewritten - the check did not run",
-            );
-        }
-    };
-
-    let mut comments = comments;
     crate::filters::contextualize(&mut comments, &content, true);
-    let filtered = apply_filters(&comments);
+    let filtered = apply_filters_with_markers(&comments, &analysis.marker_reasons);
     if filtered.is_empty() {
         return strip_message(
             &HookOutcome::Clean,
@@ -706,28 +776,6 @@ fn exceeds_content_limit(tool: ToolKind, hook_input: &HookInput) -> bool {
             .any(|edit| edit.new_string.len() > MAX_CONTENT_BYTES),
         ToolKind::Write => get_content_to_check(hook_input).len() > MAX_CONTENT_BYTES,
     }
-}
-
-/// Comments for a list of discrete edits: a `MultiEdit`, or an `Edit`/`apply_patch` that attached an
-/// `edits[]` array (the `OpenCode` plugin's shape).
-fn edits_comments(
-    edits: &[Edit],
-    file_path: &str,
-    include_docstrings: bool,
-) -> Result<Vec<CommentInfo>, DetectError> {
-    let mut comments = Vec::new();
-    for edit in edits {
-        if edit.new_string.is_empty() {
-            continue;
-        }
-        comments.extend(CommentDetector::detect_edit_checked(
-            &edit.old_string,
-            &edit.new_string,
-            file_path,
-            include_docstrings,
-        )?);
-    }
-    Ok(comments)
 }
 
 #[must_use]
