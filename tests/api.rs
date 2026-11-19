@@ -92,6 +92,28 @@ fn check_hook_input_with_options_given_docstrings_enabled_exits_two() {
 }
 
 #[test]
+fn check_hook_input_given_commented_out_code_emits_the_severity_tier() {
+    // given: a proven smell on a whole-file Write
+    let input = r##"{"tool_name":"Write","tool_input":{"file_path":"test.py","content":"# x = 1;\nprint(2)\n"}}"##;
+
+    // when
+    let result = check_hook_input(input, "");
+
+    // then: the verdict names the reason and carries the tier on the comment element
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        result.message.contains("reason=\"commented-out-code\""),
+        "{}",
+        result.message
+    );
+    assert!(
+        result.message.contains("severity=\"high\""),
+        "{}",
+        result.message
+    );
+}
+
+#[test]
 fn check_hook_input_given_edit_adding_comment_with_repeated_text_exits_two() {
     // given: the added `# note` is text that already existed later in old_string
     let input = r##"{"tool_name":"Edit","tool_input":{"file_path":"test.py","old_string":"# note\nx = 1\n","new_string":"# note\nx = 1\n# note\n"}}"##;

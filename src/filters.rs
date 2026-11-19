@@ -675,6 +675,38 @@ pub fn severity_for_reason(reason: &str) -> Option<Severity> {
     }
 }
 
+/// The severity floor a `--min-confidence` level sets on a report.
+///
+/// `low` and unknown values keep the report unchanged, `medium` drops the low tier, and `high`
+/// keeps only the proven-smell tier so a legacy tree can ratchet down to the strongest evidence.
+/// A comment without a tier (marker bookkeeping such as `allow-added`) always passes: it is a
+/// violation of the change, not prose, and hiding it would be a silent loss.
+#[must_use]
+pub fn apply_min_confidence(comments: Vec<CommentInfo>, level: Option<&str>) -> Vec<CommentInfo> {
+    let floor = match level {
+        Some("medium") => 1,
+        Some("high") => 2,
+        _ => return comments,
+    };
+    comments
+        .into_iter()
+        .filter(|comment| {
+            comment
+                .metadata
+                .get("reason")
+                .map(String::as_str)
+                .and_then(severity_for_reason)
+                .is_none_or(|severity| {
+                    (match severity {
+                        Severity::High => 2,
+                        Severity::Medium => 1,
+                        Severity::Low => 0,
+                    }) >= floor
+                })
+        })
+        .collect()
+}
+
 fn is_spared(comment: &CommentInfo, keyword_acquit: KeywordAcquitMode) -> bool {
     if is_structurally_justified(comment)
         || BddFilter.should_skip(comment)

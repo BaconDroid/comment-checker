@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::detector::{CommentDetector, DetectError};
 use crate::engine::{self, null_default};
-use crate::filters::{analyze_suppression, apply_filters_with_markers};
+use crate::filters::{analyze_suppression, apply_filters_with_markers, apply_min_confidence};
 use crate::language::language_for_path;
 use crate::models::{CommentInfo, Edit};
 use crate::output::format_hook_message;
@@ -155,7 +155,7 @@ pub fn check_hook_input_with_options(
 
     serde_json::from_str::<HookInput>(input).map_or_else(
         |_| skip("Invalid input format"),
-        |hook_input| evaluate(&hook_input, custom_prompt, include_docstrings).into_result(),
+        |hook_input| evaluate(&hook_input, custom_prompt, include_docstrings, None).into_result(),
     )
 }
 
@@ -168,15 +168,31 @@ pub fn check_hook_input_from_reader<R: std::io::Read>(
         |_| skip("Invalid input format"),
         |hook_input| {
             if options.strip {
-                evaluate_strip(&hook_input, &options.prompt, true)
+                evaluate_strip(
+                    &hook_input,
+                    &options.prompt,
+                    true,
+                    options.min_confidence.as_deref(),
+                )
             } else {
-                evaluate(&hook_input, &options.prompt, true).into_result()
+                evaluate(
+                    &hook_input,
+                    &options.prompt,
+                    true,
+                    options.min_confidence.as_deref(),
+                )
+                .into_result()
             }
         },
     )
 }
 
-fn evaluate(hook_input: &HookInput, custom_prompt: &str, include_docstrings: bool) -> HookOutcome {
+fn evaluate(
+    hook_input: &HookInput,
+    custom_prompt: &str,
+    include_docstrings: bool,
+    min_confidence: Option<&str>,
+) -> HookOutcome {
     let Some(tool) = classify_tool(&hook_input.tool_name) else {
         return HookOutcome::Skipped("Unsupported tool".to_owned());
     };
@@ -254,7 +270,10 @@ fn evaluate(hook_input: &HookInput, custom_prompt: &str, include_docstrings: boo
             true,
         );
     }
-    let filtered = apply_filters_with_markers(&checked.comments, &checked.marker_reasons);
+    let filtered = apply_min_confidence(
+        apply_filters_with_markers(&checked.comments, &checked.marker_reasons),
+        min_confidence,
+    );
     if filtered.is_empty() {
         return HookOutcome::Clean;
     }
@@ -337,6 +356,7 @@ fn evaluate_strip(
     hook_input: &HookInput,
     custom_prompt: &str,
     include_docstrings: bool,
+    min_confidence: Option<&str>,
 ) -> HookCheckResult {
     if classify_tool(&hook_input.tool_name).is_none() {
         return skip("Unsupported tool");
@@ -353,7 +373,12 @@ fn evaluate_strip(
     let content = match std::fs::read_to_string(&target) {
         Ok(content) => content,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            let outcome = evaluate(hook_input, custom_prompt, include_docstrings);
+            let outcome = evaluate(
+                hook_input,
+                custom_prompt,
+                include_docstrings,
+                min_confidence,
+            );
             return strip_message(
                 &outcome,
                 &format!("not rewritten - {} is not on disk", target.display()),
@@ -398,7 +423,10 @@ fn evaluate_strip(
     }
 
     crate::filters::contextualize(&mut comments, &content, true);
-    let filtered = apply_filters_with_markers(&comments, &analysis.marker_reasons);
+    let filtered = apply_min_confidence(
+        apply_filters_with_markers(&comments, &analysis.marker_reasons),
+        min_confidence,
+    );
     if filtered.is_empty() {
         return strip_message(
             &HookOutcome::Clean,

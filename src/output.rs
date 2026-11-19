@@ -32,6 +32,11 @@ fn push_comment_xml(output: &mut String, comment: &CommentInfo) {
         engine::push_escaped_attribute(output, reason);
         output.push('"');
     }
+    if let Some(severity) = comment.metadata.get("severity") {
+        output.push_str(" severity=\"");
+        engine::push_escaped_attribute(output, severity);
+        output.push('"');
+    }
     output.push('>');
     engine::push_escaped_text(output, &comment.text);
     output.push_str("</comment>\n");
