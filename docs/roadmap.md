@@ -13,7 +13,6 @@ the same branch name in both repositories.
 
 | # | Item | Status |
 |:-:|:-----|:------|
-| A2 | Honour `--min-confidence` (parsed today and ignored) and emit the tier on each `<comment>` element. A legacy tree can ratchet on proven smells only. | now |
 | A3 | `comment-volume`: more than N comments added in one change, reported once at the first added comment, at low severity. | later |
 | A4 | Duplicate and near-duplicate comments within a file, excluding spared classes and requiring a token floor. | later |
 
