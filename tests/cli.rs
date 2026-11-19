@@ -95,6 +95,22 @@ fn cli_given_comment_exits_two() -> std::io::Result<()> {
 }
 
 #[test]
+fn cli_given_min_confidence_high_filters_prose_and_exits_zero() -> std::io::Result<()> {
+    // given: only a low-tier prose comment, which the floor must drop
+    let input = r##"{"tool_name":"Write","tool_input":{"file_path":"test.py","content":"# comment\nprint(1)"}}"##;
+
+    // when
+    let output = run_checker(input, &["--min-confidence", "high"])?;
+
+    // then: the report is clean and the prose reason never reaches stderr
+    assert!(output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Success"), "stderr: {stderr}");
+    assert!(!stderr.contains("unnecessary-comment"), "stderr: {stderr}");
+    Ok(())
+}
+
+#[test]
 fn cli_keyword_acquit_never_reports_rationale_comment() -> std::io::Result<()> {
     // given: a rationale comment the default fallback spares
     let input = r##"{"tool_name":"Write","tool_input":{"file_path":"test.py","content":"# because the retry budget is finite\nx = 1\n"}}"##;

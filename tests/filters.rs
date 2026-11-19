@@ -1,6 +1,6 @@
 use comment_checker::filters::{
     AgentMemoFilter, BddFilter, DirectiveFilter, ShebangFilter, SuppressionFilter, apply_filters,
-    is_line_suppressed, severity_for_reason,
+    apply_min_confidence, is_line_suppressed, severity_for_reason,
 };
 use comment_checker::models::{CommentInfo, CommentType, Severity};
 
@@ -685,4 +685,38 @@ fn apply_filters_carries_the_severity_tier_in_metadata() {
         result[0].metadata.get("severity").map(String::as_str),
         Some("low"),
     );
+}
+
+#[test]
+fn apply_min_confidence_floors_the_report_by_tier() {
+    // given: one proven smell (high) and one prose comment (low), both carrying their tier
+    let flagged = apply_filters(&[line("# x = 1;"), line("# if you need to skip this")]);
+    assert_eq!(flagged.len(), 2);
+
+    // when/then: absent, low and unknown levels keep the report; medium drops low; high keeps high
+    assert_eq!(apply_min_confidence(flagged.clone(), None).len(), 2);
+    assert_eq!(apply_min_confidence(flagged.clone(), Some("low")).len(), 2);
+    assert_eq!(
+        apply_min_confidence(flagged.clone(), Some("medium")).len(),
+        1
+    );
+    let high_only = apply_min_confidence(flagged.clone(), Some("high"));
+    assert_eq!(high_only.len(), 1);
+    assert_eq!(
+        high_only[0].metadata.get("reason").map(String::as_str),
+        Some("commented-out-code"),
+    );
+    assert_eq!(apply_min_confidence(flagged, Some("nonsense")).len(), 2);
+}
+
+#[test]
+fn apply_min_confidence_keeps_untiered_comments() {
+    // given: a comment that never went through the tiering pass (marker bookkeeping shape)
+    let raw = line("# arbitrary");
+
+    // when
+    let kept = apply_min_confidence(vec![raw], Some("high"));
+
+    // then
+    assert_eq!(kept.len(), 1);
 }
