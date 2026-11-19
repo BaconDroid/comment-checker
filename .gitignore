@@ -22,3 +22,7 @@ ai-todolist.md
 notepad.md
 evidence/
 plans/
+
+# Eval artifacts
+eval/__pycache__/
+eval/baseline-history.json
