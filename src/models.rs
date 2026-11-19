@@ -12,6 +12,29 @@ pub enum CommentType {
     Docstring,
 }
 
+/// How strongly a reported reason indicts the comment.
+///
+/// The tier follows the reason class: proven content smells read high, adjacency-dependent
+/// contextual reasons read medium because their evidence needs a whole-file `Write`, and the
+/// residual prose reason reads low.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Severity {
+    High,
+    Medium,
+    Low,
+}
+
+impl Severity {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::High => "high",
+            Self::Medium => "medium",
+            Self::Low => "low",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq)]
 pub struct Edit {
     #[serde(default, alias = "oldString", deserialize_with = "null_default")]
