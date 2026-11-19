@@ -3,6 +3,51 @@ use comment_checker::api::{
 };
 use serde_json::Value;
 
+fn git_root_fixture(tag: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "cc-b1-api-{tag}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(dir.join(".git")).unwrap();
+    dir
+}
+
+#[test]
+fn check_hook_input_given_config_at_git_root_exempts_the_reason_class() {
+    // given: a git root whose config exempts agent-memo under tests/**
+    let root = git_root_fixture("allow");
+    std::fs::write(
+        root.join(".comment-checker.json"),
+        r#"{"allow":[{"glob":"tests/**","reasons":["agent-memo"],"reason":"legacy suite notes"}]}"#,
+    )
+    .unwrap();
+    let input = format!(
+        r##"{{"tool_name":"Write","tool_input":{{"file_path":"tests/app.py","content":"# Changed from old to new\nx = 1\n"}},"cwd":"{}"}}"##,
+        root.display()
+    );
+
+    // when
+    let exempted = check_hook_input(&input, "");
+
+    // then: the covered agent-memo comment is exempt
+    assert_eq!(exempted.exit_code, 0, "{}", exempted.message);
+
+    // and: a config whose glob does not cover the path leaves it reported (teeth: the config is
+    // consulted, and only a matching entry spares)
+    std::fs::write(
+        root.join(".comment-checker.json"),
+        r#"{"allow":[{"glob":"vendor/**","reasons":["agent-memo"],"reason":"legacy suite notes"}]}"#,
+    )
+    .unwrap();
+    let uncovered = check_hook_input(&input, "");
+    assert_eq!(uncovered.exit_code, 2, "{}", uncovered.message);
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
 #[test]
 fn check_hook_input_given_clean_write_returns_pass() {
     // given
