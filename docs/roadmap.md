@@ -41,12 +41,6 @@ the same branch name in both repositories.
 | D1 | Precision replay over real comment history, modelled on the sibling's `eval/replay.py`: before/after binaries, per-reason counts, exit-2 payloads. | next |
 | D2 | Secondary OSS corpus with a tracked manifest (URL, license, HEAD, commit and path per payload; payload bytes outside the checkout). | later |
 
-## Coordinated with the sibling
-
-| # | Item | Status |
-|:-:|:-----|:------|
-| **[cc+tc]** X1 | Marker hardening: a marker counts only inside a detected comment node, a marker added by the same edit is inert and reported, malformed markers report `allow-invalid`. `parity/vectors.json`'s `suppression-marker` case changes with it. | later |
-
 ## Not adopted
 
 | Idea | Why |
