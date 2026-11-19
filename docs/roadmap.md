@@ -20,7 +20,6 @@ the same branch name in both repositories.
 
 | # | Item | Status |
 |:-:|:-----|:------|
-| B1 | `.comment-checker.json` at the git root: `allow: [{glob, reasons, reason}]`, discovered through the first `.git` ancestor, entries dropped when malformed, a reason required. Exempts classes per directory instead of littering in-file markers. | now |
 | B2 | Editing that config is itself a finding (`config-edited`). | next |
 | B3 | `remove: [{glob, reasons, reason}]`, so `--strip` removes only approved reason classes and reports the rest as kept. | next |
 | B4 | `scripts/doctor.sh` audit of legacy in-file markers. | later |
