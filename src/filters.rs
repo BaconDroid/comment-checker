@@ -996,19 +996,7 @@ impl SuppressionConfig {
     /// ignored. A missing, unreadable, or malformed file yields no exemptions, and an entry with
     /// a blank glob, no reasons, or a blank reason is dropped.
     pub(crate) fn load(cwd: Option<&str>) -> Self {
-        let base = cwd
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned)
-            .or_else(|| {
-                std::env::current_dir()
-                    .ok()
-                    .map(|path| path.to_string_lossy().into_owned())
-            });
-        let Some(base) = base else {
-            return Self::default();
-        };
-        let Some(root) = git_root(std::path::Path::new(&base)) else {
+        let Some((root, _)) = payload_git_root(cwd) else {
             return Self::default();
         };
         let root_text = root.to_string_lossy().into_owned();
@@ -1062,6 +1050,66 @@ impl SuppressionConfig {
                         || (listed == "restates-code" && reason.starts_with("restates-code:"))
                 })
         })
+    }
+}
+
+/// The git root that contains the payload `cwd` (or the process directory when `cwd` is blank),
+/// with the directory the walk started from.
+fn payload_git_root(cwd: Option<&str>) -> Option<(std::path::PathBuf, std::path::PathBuf)> {
+    let base = cwd
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::current_dir().ok())?;
+    let root = git_root(&base)?;
+    Some((root, base))
+}
+
+/// Whether `file_path` is the committed config at the git root containing `cwd`.
+///
+/// Only `<git root>/.comment-checker.json` qualifies: a same-named file in another directory is
+/// not read by [`SuppressionConfig::load`], so editing it changes nothing the hook trusts. A
+/// relative path resolves against `cwd`, `.`/`..` segments are folded away, and symlinked
+/// parent directories are resolved when they exist. The config's own content is never consulted,
+/// so no `allow` entry can exempt an edit to the file that grants it.
+pub(crate) fn is_config_path(file_path: &str, cwd: Option<&str>) -> bool {
+    let Some((root, base)) = payload_git_root(cwd) else {
+        return false;
+    };
+    let file = std::path::PathBuf::from(file_path.replace('\\', "/"));
+    let target = if file.is_absolute() {
+        file
+    } else {
+        base.join(file)
+    };
+    let config = root.join(CONFIG_FILE_NAME);
+    let target = fold_dots(&target);
+    let config = fold_dots(&config);
+    target == config || resolve_parent(&target) == resolve_parent(&config)
+}
+
+/// `path` without `.` segments and with each `..` removing the segment before it.
+fn fold_dots(path: &std::path::Path) -> std::path::PathBuf {
+    use std::path::Component;
+    let mut folded = std::path::PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                folded.pop();
+            }
+            other => folded.push(other.as_os_str()),
+        }
+    }
+    folded
+}
+
+/// `path` with its parent directory canonicalised, so a symlinked directory cannot hide the
+/// config's identity. A parent that does not exist leaves the path as given.
+fn resolve_parent(path: &std::path::Path) -> std::path::PathBuf {
+    match (path.parent().map(std::fs::canonicalize), path.file_name()) {
+        (Some(Ok(parent)), Some(name)) => parent.join(name),
+        _ => path.to_path_buf(),
     }
 }
 

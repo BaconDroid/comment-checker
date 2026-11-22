@@ -6,10 +6,11 @@ use crate::detector::{CommentDetector, DetectError};
 use crate::engine::{self, null_default};
 use crate::filters::{
     SuppressionConfig, analyze_suppression, apply_filters_with_markers, apply_min_confidence,
+    is_config_path,
 };
 use crate::language::language_for_path;
 use crate::models::{CommentInfo, Edit};
-use crate::output::format_hook_message;
+use crate::output::{format_config_edit_message, format_hook_message};
 
 pub const EXIT_PASS: i32 = 0;
 pub(crate) const EXIT_INTERNAL_FAILURE: i32 = 1;
@@ -202,6 +203,9 @@ fn evaluate(
     if file_path.is_empty() {
         return HookOutcome::Skipped("No file path provided".to_owned());
     }
+    if is_config_path(file_path, Some(hook_input.cwd.as_str())) {
+        return HookOutcome::Findings(format_config_edit_message(file_path));
+    }
     if language_for_path(file_path).is_none() {
         return HookOutcome::Skipped("Non-code file".to_owned());
     }
@@ -367,6 +371,9 @@ fn evaluate_strip(
     let file_path = hook_input.tool_input.file_path.as_str();
     if file_path.is_empty() {
         return skip("No file path provided");
+    }
+    if is_config_path(file_path, Some(hook_input.cwd.as_str())) {
+        return HookOutcome::Findings(format_config_edit_message(file_path)).into_result();
     }
     if language_for_path(file_path).is_none() {
         return skip("Non-code file");

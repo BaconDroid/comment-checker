@@ -194,6 +194,7 @@ every reported comment is a `<comment>` element with a `reason` attribute:
 | `narrates-control-flow` | whole-file `Write` only: the comment narrates a nearby loop |
 | `allow-added` | the comment is a suppression marker on a line this change added, so it suppresses nothing |
 | `allow-invalid` | the comment is a malformed suppression marker: unknown reason class, no `--`, or an empty justification |
+| `config-edited` | the change writes `<git root>/.comment-checker.json`; reported for every `Write`/`Edit`/`MultiEdit` of that file, whatever it contains, and never exempted by it |
 
 Detection is deny-by-default: a comment is reported unless a spare rule matches. On a whole-file
 `Write` the contextual check can refine a generic reason and can overrule the prose-keyword
