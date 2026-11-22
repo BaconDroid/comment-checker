@@ -1,0 +1,40 @@
+name: Mutation
+
+# Advisory only: not triggered by push or pull_request, so it can never gate a PR or the
+# required CI checks. `continue-on-error` keeps surviving mutants from failing the run.
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  TSLP_LINK_MODE: static
+
+jobs:
+  mutants:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cargo-mutants
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-mutants
+
+      # Scope (`examine_globs`) comes from .cargo/mutants.toml.
+      - name: Mutation test
+        run: cargo mutants -p comment-checker
+
+      - name: Upload mutants report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutants-out
+          path: mutants.out
+          if-no-files-found: ignore
