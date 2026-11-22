@@ -20,9 +20,10 @@ the same branch name in both repositories.
 
 | # | Item | Status |
 |:-:|:-----|:------|
-| B2 | Editing that config is itself a finding (`config-edited`). | next |
 | B3 | `remove: [{glob, reasons, reason}]`, so `--strip` removes only approved reason classes and reports the rest as kept. | next |
 | B4 | `scripts/doctor.sh` audit of legacy in-file markers. | later |
+
+| B2 | Editing that config is itself a finding (`config-edited`). | next |
 
 ## Block C - Verdict quality
 

@@ -49,6 +49,106 @@ fn check_hook_input_given_config_at_git_root_exempts_the_reason_class() {
 }
 
 #[test]
+fn check_hook_input_given_root_config_edit_reports_config_edited_for_every_edit_tool() {
+    // given: a git root whose config tries to exempt everything, including config-edited
+    let root = git_root_fixture("config-edited");
+    std::fs::write(
+        root.join(".comment-checker.json"),
+        r#"{"allow":[{"glob":"**","reasons":["config-edited","unnecessary-comment"],"reason":"exempt all"}]}"#,
+    )
+    .unwrap();
+    let cwd = root.display();
+    let tool_inputs = [
+        (
+            "Write",
+            r#"{"file_path":".comment-checker.json","content":"{}"}"#,
+        ),
+        (
+            "Edit",
+            r#"{"file_path":".comment-checker.json","old_string":"exempt all","new_string":"x"}"#,
+        ),
+        (
+            "MultiEdit",
+            r#"{"file_path":".comment-checker.json","edits":[{"old_string":"a","new_string":"b"}]}"#,
+        ),
+    ];
+    for (tool, tool_input) in tool_inputs {
+        let input = format!(r#"{{"tool_name":"{tool}","tool_input":{tool_input},"cwd":"{cwd}"}}"#);
+        // when
+        let result = check_hook_input(&input, "");
+        // then: reported and blocked even though no comment is present and the config exempts it
+        assert_eq!(result.exit_code, 2, "{tool}: {}", result.message);
+        assert!(
+            result.message.contains(r#"reason="config-edited""#),
+            "{tool}: {}",
+            result.message
+        );
+        assert!(
+            result
+                .message
+                .contains(r#"<comments file=".comment-checker.json">"#),
+            "{tool}: {}",
+            result.message
+        );
+    }
+    std::fs::remove_dir_all(&root).unwrap();
+}
+#[test]
+fn check_hook_input_given_config_path_spelling_resolves_to_the_root_config_only() {
+    // given: a git root with a nested directory, a config beside it, and a directory outside
+    let root = git_root_fixture("config-paths");
+    std::fs::create_dir_all(root.join("sub")).unwrap();
+    let outside = git_root_fixture("config-outside");
+    let spelling_cases = [
+        (".comment-checker.json".to_owned(), 2),
+        ("./.comment-checker.json".to_owned(), 2),
+        ("sub/../.comment-checker.json".to_owned(), 2),
+        (root.join(".comment-checker.json").display().to_string(), 2),
+        ("sub/.comment-checker.json".to_owned(), 0),
+        (
+            root.join("sub")
+                .join(".comment-checker.json")
+                .display()
+                .to_string(),
+            0,
+        ),
+        (
+            outside.join(".comment-checker.json").display().to_string(),
+            0,
+        ),
+        ("x.comment-checker.json".to_owned(), 0),
+    ];
+    for (file_path, expected) in spelling_cases {
+        let input = format!(
+            r#"{{"tool_name":"Write","tool_input":{{"file_path":{},"content":"{{}}"}},"cwd":"{}"}}"#,
+            serde_json::to_string(&file_path).unwrap(),
+            root.display()
+        );
+        // when
+        let result = check_hook_input(&input, "");
+        // then: only the git-root config is a config edit; any other JSON stays a non-code skip
+        assert_eq!(
+            result.exit_code, expected,
+            "{file_path}: {}",
+            result.message
+        );
+        assert_eq!(
+            result.message.contains("config-edited"),
+            expected == 2,
+            "{file_path}: {}",
+            result.message
+        );
+    }
+    // and: with the payload cwd inside a subdirectory, the git-root config is still the target
+    let from_sub = format!(
+        r#"{{"tool_name":"Write","tool_input":{{"file_path":"../.comment-checker.json","content":"{{}}"}},"cwd":"{}"}}"#,
+        root.join("sub").display()
+    );
+    assert_eq!(check_hook_input(&from_sub, "").exit_code, 2);
+    std::fs::remove_dir_all(&root).unwrap();
+    std::fs::remove_dir_all(&outside).unwrap();
+}
+#[test]
 fn check_hook_input_given_clean_write_returns_pass() {
     // given
     let input =

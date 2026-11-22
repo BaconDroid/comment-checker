@@ -1,6 +1,8 @@
+use std::collections::BTreeMap;
+
 use crate::engine;
 use crate::filters::AgentMemoFilter;
-use crate::models::CommentInfo;
+use crate::models::{CommentInfo, CommentType};
 
 #[must_use]
 pub fn build_comments_xml(comments: &[CommentInfo], file_path: &str) -> String {
@@ -40,6 +42,36 @@ fn push_comment_xml(output: &mut String, comment: &CommentInfo) {
     output.push('>');
     engine::push_escaped_text(output, &comment.text);
     output.push_str("</comment>\n");
+}
+
+/// The block payload for a change to the checker configuration at the git root.
+///
+/// The file grants exemptions, so an edit to it is reported on its own, with the same
+/// `<comments>` element and `reason` attribute the comment findings use.
+#[must_use]
+pub(crate) fn format_config_edit_message(file_path: &str) -> String {
+    let finding = CommentInfo {
+        text: "edit to the checker configuration".to_owned(),
+        line_number: 1,
+        file_path: file_path.to_owned(),
+        comment_type: CommentType::Line,
+        is_docstring: false,
+        metadata: BTreeMap::from([("reason".to_owned(), "config-edited".to_owned())]),
+        byte_span: None,
+    };
+    let mut output =
+        String::from("CHECKER CONFIGURATION EDIT DETECTED - IMMEDIATE ACTION REQUIRED\n\n");
+    output.push_str(
+        "This change writes the comment-checker configuration, whose `allow` entries exempt \
+         comment reasons from this hook.\n",
+    );
+    output.push_str(
+        "Tell the user what the edit changes and why, and proceed only with their approval.\n\n",
+    );
+    output.push_str("Detected configuration edit:\n");
+    output.push_str(&build_comments_xml(&[finding], file_path));
+    output.push('\n');
+    output
 }
 
 #[must_use]
