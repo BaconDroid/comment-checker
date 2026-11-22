@@ -34,7 +34,6 @@ the same branch name in both repositories.
 
 | # | Item | Status |
 |:-:|:-----|:------|
-| D1 | Precision replay over real comment history, modelled on the sibling's `eval/replay.py`: before/after binaries, per-reason counts, exit-2 payloads. | next |
 | D2 | Secondary OSS corpus with a tracked manifest (URL, license, HEAD, commit and path per payload; payload bytes outside the checkout). | later |
 
 ## Not adopted
