@@ -297,6 +297,15 @@ message gains a trailing `[comment-checker] strip: ...` summary.
   shebangs, license/generated/public-API/attribution/intent) are never flagged, so they are never
   removed; a `comment-checker: allow` marker suppresses the run and leaves the file untouched.
   Flagged docstrings are removable too.
+- **Approved removals.** `<git root>/.comment-checker.json` may carry `"remove": [{"glob", "reasons",
+  "reason"}]`. When it does, `--strip` removes a flagged comment only if its path matches a `glob`
+  and its final reason is in that entry's `reasons` (`restates-code` also covers
+  `restates-code: <evidence>`). Every other flagged comment is kept, still listed in the report, and
+  counted in the summary as `kept N flagged comment(s) awaiting approval`. An entry with a blank
+  `glob`, no `reasons`, or a blank `reason` is dropped, so `"remove": []` approves nothing, and a
+  config file that cannot be parsed approves nothing. Only `--strip` reads `remove`; it never
+  exempts a finding, and an `allow` entry never approves a removal. With no `remove` key (or no
+  config), every flagged comment is removed.
 - **Rewrite rules.** A comment that owns its line removes the whole line including its ending. A
   trailing comment removes the comment and the whitespace before it, keeping the code and the line
   ending. A block comment or docstring removes its span; a line left empty by that removal is

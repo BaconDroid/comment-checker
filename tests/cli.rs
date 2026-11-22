@@ -489,3 +489,189 @@ fn cli_given_strip_leaves_the_file_untouched_when_a_comment_is_ambiguous() -> st
     assert_eq!(std::fs::read_to_string(&file)?, original);
     Ok(())
 }
+
+/// A scratch git root holding `.comment-checker.json` and a `src/app.py` that carries one
+/// `unnecessary-comment`, one `restates-code` comment, and one `vacuous-todo`.
+fn approval_fixture(label: &str, config: &str) -> std::io::Result<(TempDir, PathBuf)> {
+    let dir = TempDir::new(label)?;
+    std::fs::create_dir_all(dir.path().join(".git"))?;
+    std::fs::create_dir_all(dir.path().join("src"))?;
+    std::fs::write(dir.path().join(".comment-checker.json"), config)?;
+    let file = dir.path().join("src/app.py");
+    std::fs::write(
+        &file,
+        "# narration\ncounter = 0\n# increment counter\ncounter += 1\n# TODO: fix\nx = 1\n",
+    )?;
+    Ok((dir, file))
+}
+
+const APPROVAL_ORIGINAL: &str =
+    "# narration\ncounter = 0\n# increment counter\ncounter += 1\n# TODO: fix\nx = 1\n";
+
+#[test]
+fn cli_strip_removes_only_the_comments_a_remove_entry_approves() -> std::io::Result<()> {
+    // given: the config contract approves `unnecessary-comment` and the `restates-code` prefix
+    // for `src/**`, and nothing for the TODO
+    let (dir, file) = approval_fixture(
+        "remove-approved",
+        r#"{"remove":[{"glob":"src/**","reasons":["unnecessary-comment","restates-code"],"reason":"cleanup"}]}"#,
+    )?;
+
+    // when
+    let output = run_checker(&strip_payload("src/app.py", dir.path()), &["--strip"])?;
+
+    // then: the approved classes go, the TODO stays and is reported as kept
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("strip: removed 2 flagged comment(s)"),
+        "stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("kept 1 flagged comment(s) awaiting approval in .comment-checker.json"),
+        "stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("reason=\"vacuous-todo\""),
+        "stderr: {stderr}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&file)?,
+        "counter = 0\ncounter += 1\n# TODO: fix\nx = 1\n"
+    );
+    Ok(())
+}
+
+#[test]
+fn cli_strip_keeps_a_comment_when_no_remove_entry_matches_its_path_or_reason() -> std::io::Result<()>
+{
+    for (label, config) in [
+        (
+            "remove-other-glob",
+            r#"{"remove":[{"glob":"tests/**","reasons":["unnecessary-comment","restates-code","vacuous-todo"],"reason":"cleanup"}]}"#,
+        ),
+        (
+            "remove-other-reason",
+            r#"{"remove":[{"glob":"src/**","reasons":["agent-memo","past-facing"],"reason":"cleanup"}]}"#,
+        ),
+    ] {
+        // given
+        let (dir, file) = approval_fixture(label, config)?;
+
+        // when
+        let output = run_checker(&strip_payload("src/app.py", dir.path()), &["--strip"])?;
+
+        // then: nothing is approved, so the file is untouched and every finding is kept
+        assert_eq!(output.status.code(), Some(2), "{label}");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("left untouched - kept 3 flagged comment(s) awaiting approval"),
+            "{label} stderr: {stderr}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&file)?,
+            APPROVAL_ORIGINAL,
+            "{label}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn cli_strip_ignores_malformed_blank_and_unreadable_remove_config() -> std::io::Result<()> {
+    for (label, config) in [
+        (
+            "remove-blank-glob",
+            r#"{"remove":[{"glob":"  ","reasons":["unnecessary-comment"],"reason":"cleanup"}]}"#,
+        ),
+        (
+            "remove-no-reasons",
+            r#"{"remove":[{"glob":"src/**","reasons":[" "],"reason":"cleanup"}]}"#,
+        ),
+        (
+            "remove-blank-reason",
+            r#"{"remove":[{"glob":"src/**","reasons":["unnecessary-comment"],"reason":" "}]}"#,
+        ),
+        ("remove-not-a-list", r#"{"remove":"src/**"}"#),
+        ("remove-empty-list", r#"{"remove":[]}"#),
+        ("config-not-json", r#"{"remove":[{"glob":"src/**""#),
+    ] {
+        // given
+        let (dir, file) = approval_fixture(label, config)?;
+
+        // when
+        let output = run_checker(&strip_payload("src/app.py", dir.path()), &["--strip"])?;
+
+        // then: an entry that fails validation approves nothing, and a broken file fails closed
+        assert_eq!(output.status.code(), Some(2), "{label}");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("left untouched - kept 3 flagged comment(s) awaiting approval"),
+            "{label} stderr: {stderr}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&file)?,
+            APPROVAL_ORIGINAL,
+            "{label}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn cli_strip_allow_entries_never_approve_removal_and_a_config_without_remove_strips_all()
+-> std::io::Result<()> {
+    // given: an `allow` entry for another directory and no `remove` key
+    let (dir, file) = approval_fixture(
+        "allow-only",
+        r#"{"allow":[{"glob":"docs/**","reasons":["unnecessary-comment"],"reason":"docs"}]}"#,
+    )?;
+
+    // when
+    let output = run_checker(&strip_payload("src/app.py", dir.path()), &["--strip"])?;
+
+    // then: with no approval list, `--strip` removes every flagged comment as it did before
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("strip: removed 3 flagged comment(s)"),
+        "stderr: {stderr}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&file)?,
+        "counter = 0\ncounter += 1\nx = 1\n"
+    );
+    Ok(())
+}
+
+#[test]
+fn cli_report_without_strip_ignores_remove_entries() -> std::io::Result<()> {
+    // given: an approval that covers every flagged comment
+    let (dir, file) = approval_fixture(
+        "remove-report",
+        r#"{"remove":[{"glob":"**","reasons":["unnecessary-comment","restates-code","vacuous-todo"],"reason":"cleanup"}]}"#,
+    )?;
+
+    // when
+    let input = serde_json::json!({
+        "tool_name": "Write",
+        "tool_input": { "file_path": "src/app.py", "content": APPROVAL_ORIGINAL },
+        "cwd": dir.path(),
+    })
+    .to_string();
+    let output = run_checker(&input, &[])?;
+
+    // then: the entry is neither an exemption nor a removal outside `--strip`
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    for reason in [
+        "unnecessary-comment",
+        "restates-code: counter",
+        "vacuous-todo",
+    ] {
+        assert!(stderr.contains(reason), "{reason} missing: {stderr}");
+    }
+    assert!(!stderr.contains("strip:"), "stderr: {stderr}");
+    assert_eq!(std::fs::read_to_string(&file)?, APPROVAL_ORIGINAL);
+    Ok(())
+}

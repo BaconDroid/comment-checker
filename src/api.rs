@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::detector::{CommentDetector, DetectError};
 use crate::engine::{self, null_default};
 use crate::filters::{
-    SuppressionConfig, analyze_suppression, apply_filters_with_markers, apply_min_confidence,
-    is_config_path,
+    CONFIG_FILE_NAME, SuppressionConfig, analyze_suppression, apply_filters_with_markers,
+    apply_min_confidence, is_config_path,
 };
 use crate::language::language_for_path;
 use crate::models::{CommentInfo, Edit};
@@ -445,14 +445,47 @@ fn evaluate_strip(
         );
     }
     let report = format_hook_message(&filtered, custom_prompt);
+    rewrite_approved(&target, &content, &filtered, &config, report)
+}
 
-    match strip_content(&content, &filtered) {
-        Ok(stripped) => match write_atomic(&target, &content, stripped.as_bytes()) {
+/// Remove the flagged comments the config approves and keep the rest, summarising both.
+///
+/// `report` lists every finding whether or not it is removed.
+fn rewrite_approved(
+    target: &Path,
+    content: &str,
+    filtered: &[CommentInfo],
+    config: &SuppressionConfig,
+    report: String,
+) -> HookCheckResult {
+    let (approved, kept): (Vec<CommentInfo>, Vec<CommentInfo>) =
+        filtered.iter().cloned().partition(|comment| {
+            let reason = comment.metadata.get("reason").map_or("", String::as_str);
+            config.approves_removal(comment.file_path.as_str(), reason)
+        });
+    let kept_note = format!(
+        "kept {} flagged comment(s) awaiting approval in {CONFIG_FILE_NAME}",
+        kept.len()
+    );
+    if approved.is_empty() {
+        return strip_message(
+            &HookOutcome::Findings(report),
+            &format!("{} left untouched - {kept_note}", target.display()),
+        );
+    }
+    let kept_suffix = if kept.is_empty() {
+        String::new()
+    } else {
+        format!("; {kept_note}")
+    };
+
+    match strip_content(content, &approved) {
+        Ok(stripped) => match write_atomic(target, content, stripped.as_bytes()) {
             Ok(()) => strip_message(
                 &HookOutcome::Findings(report),
                 &format!(
-                    "removed {} flagged comment(s) from {}",
-                    filtered.len(),
+                    "removed {} flagged comment(s) from {}{kept_suffix}",
+                    approved.len(),
                     target.display()
                 ),
             ),
