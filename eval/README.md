@@ -54,3 +54,40 @@ python3 eval/diff_vs_sf.py --sf /path/to/sf-checkout --root src --root tests
 
 Pin bump: update the commit in `sf-corpus/README.md`, re-copy `eval/corpus.json`, and triage the new
 group (2).
+
+## Precision replay
+
+`replay.py` (D1) measures what a detector or classifier change does to real comment history. It is
+manual-only: it is not run by CI and is not part of the PR gate. It builds nothing; build the
+binary under test first and keep a copy of the pre-change binary for `--before`.
+
+```bash
+cargo build --release --locked
+python3 eval/replay.py --after target/release/comment-checker
+python3 eval/replay.py --before /tmp/before --after target/release/comment-checker --json
+```
+
+`--repos` takes one or more git checkouts (default `.`). `--json` prints the report to stdout; the
+script writes no files, and result JSON is not committed.
+
+The corpus is the live git history of the checkouts, so it grows with the history and totals move
+between commits. For a fixed checkout state it is deterministic, and one payload list drives both
+binaries:
+
+1. **Replay**: the 80 most recent non-merge commits that modify a shipped-language file (the
+   extension set of `diff_vs_sf.py`). For each modified file whose parent and commit blobs both
+   exist, one `Write` payload carries the committed content and one `Edit` payload carries the
+   parent to commit pair.
+2. **Audit**: every tracked `.rs`/`.js`/`.py` file at `HEAD`, sorted, as a `Write` payload,
+   excluding `eval/*.py`.
+
+Deleted or missing blobs and payloads over 2 MiB are skipped. Each payload runs
+`<binary> --min-confidence low` with JSON on stdin. The report counts exit-code-2 payloads and
+tallies findings by `reason`, the public output key, parsed from the CLI findings on stderr. For
+`--before` and `--after` it also gives the after minus before delta for exit-2 payloads and per
+reason, with stable ordering and no timestamps.
+
+It exits nonzero only for usage or input failures (an unusable repo or binary, an empty corpus, or
+a binary exit other than 0 or 2), never for findings.
+
+D1 does not add a secondary OSS corpus; that is D2.
