@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -673,5 +674,36 @@ fn cli_report_without_strip_ignores_remove_entries() -> std::io::Result<()> {
     }
     assert!(!stderr.contains("strip:"), "stderr: {stderr}");
     assert_eq!(std::fs::read_to_string(&file)?, APPROVAL_ORIGINAL);
+    Ok(())
+}
+
+#[test]
+fn cli_given_strip_never_removes_for_the_volume_finding() -> std::io::Result<()> {
+    // given: 21 flagged comments, so the report carries a volume finding as a 22nd entry
+    let dir = TempDir::new("volume")?;
+    let file = dir.path().join("a.py");
+    let mut content = String::new();
+    let mut expected = String::new();
+    for i in 0..21 {
+        write!(content, "# narration {i}\nv{i} = {i}\n").unwrap();
+        writeln!(expected, "v{i} = {i}").unwrap();
+    }
+    std::fs::write(&file, content)?;
+
+    // when
+    let output = run_checker(&strip_payload("a.py", dir.path()), &["--strip"])?;
+
+    // then: only the 21 comments are removed; the volume finding is not a removal target
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("reason=\"comment-volume\""),
+        "stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("strip: removed 21 flagged comment(s)"),
+        "stderr: {stderr}"
+    );
+    assert_eq!(std::fs::read_to_string(&file)?, expected);
     Ok(())
 }

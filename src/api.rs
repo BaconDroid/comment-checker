@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::detector::{CommentDetector, DetectError};
 use crate::engine::{self, null_default};
 use crate::filters::{
-    CONFIG_FILE_NAME, SuppressionConfig, analyze_suppression, apply_filters_with_markers,
-    apply_min_confidence, is_config_path,
+    COMMENT_VOLUME_REASON, CONFIG_FILE_NAME, SuppressionConfig, analyze_suppression,
+    apply_filters_with_markers, apply_min_confidence, is_config_path,
 };
 use crate::language::language_for_path;
 use crate::models::{CommentInfo, Edit};
@@ -450,7 +450,8 @@ fn evaluate_strip(
 
 /// Remove the flagged comments the config approves and keep the rest, summarising both.
 ///
-/// `report` lists every finding whether or not it is removed.
+/// `report` lists every finding whether or not it is removed. The comment-volume finding describes
+/// the whole change rather than one comment, so it is never a removal target.
 fn rewrite_approved(
     target: &Path,
     content: &str,
@@ -458,8 +459,13 @@ fn rewrite_approved(
     config: &SuppressionConfig,
     report: String,
 ) -> HookCheckResult {
-    let (approved, kept): (Vec<CommentInfo>, Vec<CommentInfo>) =
-        filtered.iter().cloned().partition(|comment| {
+    let (approved, kept): (Vec<CommentInfo>, Vec<CommentInfo>) = filtered
+        .iter()
+        .filter(|comment| {
+            comment.metadata.get("reason").map(String::as_str) != Some(COMMENT_VOLUME_REASON)
+        })
+        .cloned()
+        .partition(|comment| {
             let reason = comment.metadata.get("reason").map_or("", String::as_str);
             config.approves_removal(comment.file_path.as_str(), reason)
         });
