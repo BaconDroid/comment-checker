@@ -959,9 +959,9 @@ pub(crate) fn contextualize(comments: &mut [CommentInfo], content: &str, reliabl
     }
 }
 
-/// A validated `.comment-checker.json` directory exemption.
+/// A validated `.comment-checker.json` rule: the paths it covers and the reason classes it names.
 #[derive(Debug)]
-struct ConfigAllow {
+struct ConfigRule {
     glob: String,
     reasons: Vec<String>,
 }
@@ -970,6 +970,8 @@ struct ConfigAllow {
 struct ConfigFile {
     #[serde(default)]
     allow: Vec<ConfigEntry>,
+    #[serde(default)]
+    remove: Option<Vec<ConfigEntry>>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -982,10 +984,51 @@ struct ConfigEntry {
     reason: String,
 }
 
-/// The committed directory exemptions from `<git root>/.comment-checker.json`.
+/// Which flagged comments `--strip` may remove.
+#[derive(Debug, Default)]
+enum RemovalPolicy {
+    /// No config states an approval list, so every flagged comment is removable.
+    #[default]
+    Unrestricted,
+    /// Only a comment matching one of these rules is removable; an empty list approves nothing.
+    Approved(Vec<ConfigRule>),
+}
+
+impl ConfigRule {
+    fn matches(&self, relative: &str, reason: &str) -> bool {
+        glob_matches(&self.glob, relative)
+            && self.reasons.iter().any(|listed| {
+                listed == reason
+                    || (listed == "restates-code" && reason.starts_with("restates-code:"))
+            })
+    }
+}
+
+/// The valid rules among `entries`: a blank glob, no reasons, or a blank reason drops the entry.
+fn valid_rules(entries: &[ConfigEntry]) -> Vec<ConfigRule> {
+    entries
+        .iter()
+        .filter_map(|entry| {
+            let glob = entry.glob.trim().to_owned();
+            let reasons = entry
+                .reasons
+                .iter()
+                .map(|reason| reason.trim().to_owned())
+                .filter(|reason| !reason.is_empty())
+                .collect::<Vec<_>>();
+            if glob.is_empty() || reasons.is_empty() || entry.reason.trim().is_empty() {
+                return None;
+            }
+            Some(ConfigRule { glob, reasons })
+        })
+        .collect()
+}
+
+/// The committed `allow` exemptions and `remove` approvals from `<git root>/.comment-checker.json`.
 #[derive(Debug, Default)]
 pub(crate) struct SuppressionConfig {
-    entries: Vec<ConfigAllow>,
+    entries: Vec<ConfigRule>,
+    removal: RemovalPolicy,
     root: Option<String>,
 }
 
@@ -995,46 +1038,36 @@ impl SuppressionConfig {
     /// The walk stops at the first ancestor holding `.git`; a config in any other directory is
     /// ignored. A missing, unreadable, or malformed file yields no exemptions, and an entry with
     /// a blank glob, no reasons, or a blank reason is dropped.
+    ///
+    /// Removal stays unrestricted until a config states an approval list: a parsed file with a
+    /// `remove` array, or a file that exists but cannot be read or parsed, approves only the valid
+    /// `remove` entries (none, for the unreadable file), so a broken config never widens `--strip`.
     pub(crate) fn load(cwd: Option<&str>) -> Self {
         let Some((root, _)) = payload_git_root(cwd) else {
             return Self::default();
         };
         let root_text = root.to_string_lossy().into_owned();
         let path = root.join(CONFIG_FILE_NAME);
-        let empty = Self {
+        let mut config = Self {
             entries: Vec::new(),
+            removal: RemovalPolicy::Unrestricted,
             root: Some(root_text),
         };
         if !path.is_file() {
-            return empty;
+            return config;
         }
-        let Ok(raw) = std::fs::read_to_string(&path) else {
-            return empty;
+        let parsed = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|raw| serde_json::from_str::<ConfigFile>(&raw).ok());
+        let Some(file) = parsed else {
+            config.removal = RemovalPolicy::Approved(Vec::new());
+            return config;
         };
-        let Ok(config) = serde_json::from_str::<ConfigFile>(&raw) else {
-            return empty;
-        };
-        let entries = config
-            .allow
-            .iter()
-            .filter_map(|entry| {
-                let glob = entry.glob.trim().to_owned();
-                let reasons = entry
-                    .reasons
-                    .iter()
-                    .map(|reason| reason.trim().to_owned())
-                    .filter(|reason| !reason.is_empty())
-                    .collect::<Vec<_>>();
-                if glob.is_empty() || reasons.is_empty() || entry.reason.trim().is_empty() {
-                    return None;
-                }
-                Some(ConfigAllow { glob, reasons })
-            })
-            .collect();
-        Self {
-            entries,
-            root: empty.root,
+        config.entries = valid_rules(&file.allow);
+        if let Some(remove) = &file.remove {
+            config.removal = RemovalPolicy::Approved(valid_rules(remove));
         }
+        config
     }
 
     /// Whether an `allow` entry exempts `reason` for `file_path`.
@@ -1043,13 +1076,22 @@ impl SuppressionConfig {
             return false;
         }
         let relative = relative_to_cwd(file_path, self.root.as_deref());
-        self.entries.iter().any(|entry| {
-            glob_matches(&entry.glob, &relative)
-                && entry.reasons.iter().any(|listed| {
-                    listed == reason
-                        || (listed == "restates-code" && reason.starts_with("restates-code:"))
-                })
-        })
+        self.entries
+            .iter()
+            .any(|entry| entry.matches(&relative, reason))
+    }
+
+    /// Whether `--strip` may remove a flagged comment with `reason` in `file_path`.
+    ///
+    /// Only `remove` entries approve; an `allow` entry never does.
+    pub(crate) fn approves_removal(&self, file_path: &str, reason: &str) -> bool {
+        match &self.removal {
+            RemovalPolicy::Unrestricted => true,
+            RemovalPolicy::Approved(rules) => {
+                let relative = relative_to_cwd(file_path, self.root.as_deref());
+                rules.iter().any(|rule| rule.matches(&relative, reason))
+            }
+        }
     }
 }
 
