@@ -117,6 +117,29 @@ run_gate() {
 bad_payload='{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"counter += 1\n# increment the counter\n"}}'
 good_payload='{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"print(1)\n"}}'
 
+legacy_markers="$(
+    grep -rIn --binary-files=without-match \
+        --exclude-dir=.git --exclude-dir=target --exclude-dir=node_modules \
+        --exclude='doctor.sh' 'comment-checker: allow' . 2>/dev/null |
+    while IFS= read -r match; do
+        rest="${match#*comment-checker: allow}"
+        rest="${rest#"${rest%%[![:space:]]*}"}"
+        case "$rest" in
+            *--*) continue ;;
+            ''|'*/'*|'-->'*|'//'*|'#'*) printf '%s\n' "$match" ;;
+            *) : ;;
+        esac
+    done
+)"
+if [ -n "$legacy_markers" ]; then
+    legacy_count="$(printf '%s\n' "$legacy_markers" | wc -l | tr -d ' ')"
+    say "warning: $legacy_count legacy in-file marker(s) no longer suppress anything:"
+    printf '%s\n' "$legacy_markers"
+    say "migrate each to .comment-checker.json or a scoped allow-added marker."
+else
+    say "legacy markers: 0 old file-wide marker(s)"
+fi
+
 run_gate "known-bad" 2 "$bad_payload" \
     "Expected exit 2 for a restating comment, so the edit is blocked." \
     "The installed binary may be stale, or a wrapper may be rewriting its exit code." \
