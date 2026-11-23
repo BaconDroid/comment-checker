@@ -664,7 +664,8 @@ fn reason_for(comment: &CommentInfo) -> &'static str {
 /// The severity a reported reason carries.
 ///
 /// Proven content smells read high, the adjacency-dependent contextual reasons read medium
-/// because their evidence needs a whole-file `Write`, and the residual prose reason reads low.
+/// because their evidence needs a whole-file `Write`, and the residual prose reason and the
+/// change-wide volume reason read low.
 /// Marker bookkeeping (`allow-added`, `allow-invalid`) and future unclassified reasons carry
 /// no tier.
 #[must_use]
@@ -674,7 +675,7 @@ pub fn severity_for_reason(reason: &str) -> Option<Severity> {
             Some(Severity::High)
         }
         "narrates-control-flow" => Some(Severity::Medium),
-        "unnecessary-comment" => Some(Severity::Low),
+        "unnecessary-comment" | COMMENT_VOLUME_REASON => Some(Severity::Low),
         _ if reason.starts_with("restates-code:") => Some(Severity::Medium),
         _ => None,
     }
@@ -1234,8 +1235,18 @@ fn segment_matches(pattern: &str, text: &str) -> bool {
 
 #[must_use]
 pub fn apply_filters(comments: &[CommentInfo]) -> Vec<CommentInfo> {
-    apply_filters_with_markers(comments, &[], &SuppressionConfig::default())
+    flag_comments(comments, &[], &SuppressionConfig::default())
 }
+
+/// Reason of the one finding that reports a change adding more than [`MAX_FLAGGED_COMMENTS`].
+pub(crate) const COMMENT_VOLUME_REASON: &str = "comment-volume";
+
+/// The most flagged comments one change may add before the change itself is reported.
+///
+/// A change that explains its non-obvious spots needs a handful of comments; past twenty flagged
+/// ones the volume is a smell on its own, whatever each comment says. The limit is deliberately
+/// high so it only fires on a bulk dump, and the finding is low severity.
+const MAX_FLAGGED_COMMENTS: usize = 20;
 
 /// Like [`apply_filters`], with the marker reasons from [`analyze_suppression`] aligned by index
 /// and the directory exemptions from the config.
@@ -1243,8 +1254,50 @@ pub fn apply_filters(comments: &[CommentInfo]) -> Vec<CommentInfo> {
 /// A marker comment is reported with its `allow-added`/`allow-invalid` reason instead of being
 /// spared; every other comment goes through the normal spare/flag rules, and a comment whose
 /// reason an `allow` entry names for its path is spared.
+///
+/// When more than [`MAX_FLAGGED_COMMENTS`] comments survive those rules, one extra
+/// [`COMMENT_VOLUME_REASON`] finding follows the first of them. Spared, config-exempt, and marker
+/// comments do not count, and an `allow` entry for the volume reason drops the finding.
 #[must_use]
 pub(crate) fn apply_filters_with_markers(
+    comments: &[CommentInfo],
+    marker_reasons: &[Option<&'static str>],
+    config: &SuppressionConfig,
+) -> Vec<CommentInfo> {
+    let mut findings = flag_comments(comments, marker_reasons, config);
+    // Marker bookkeeping carries no severity tier, so a tier marks a flagged comment.
+    let is_flagged = |comment: &CommentInfo| comment.metadata.contains_key("severity");
+    let flagged = findings
+        .iter()
+        .filter(|comment| is_flagged(comment))
+        .count();
+    if flagged > MAX_FLAGGED_COMMENTS {
+        if let Some(first) = findings.iter().position(is_flagged) {
+            let anchor = &findings[first];
+            if !config.exempts(anchor.file_path.as_str(), COMMENT_VOLUME_REASON) {
+                let volume = CommentInfo {
+                    text: format!(
+                        "{flagged} flagged comments added in one change (more than \
+                         {MAX_FLAGGED_COMMENTS}); keep only the comments that explain why"
+                    ),
+                    line_number: anchor.line_number,
+                    file_path: anchor.file_path.clone(),
+                    comment_type: anchor.comment_type,
+                    is_docstring: false,
+                    metadata: std::collections::BTreeMap::from([
+                        ("reason".to_owned(), COMMENT_VOLUME_REASON.to_owned()),
+                        ("severity".to_owned(), Severity::Low.as_str().to_owned()),
+                    ]),
+                    byte_span: None,
+                };
+                findings.insert(first + 1, volume);
+            }
+        }
+    }
+    findings
+}
+
+fn flag_comments(
     comments: &[CommentInfo],
     marker_reasons: &[Option<&'static str>],
     config: &SuppressionConfig,

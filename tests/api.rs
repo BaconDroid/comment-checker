@@ -2,6 +2,7 @@ use comment_checker::api::{
     check_hook_input, check_hook_input_json, check_hook_input_with_options, detect_comments_json,
 };
 use serde_json::Value;
+use std::fmt::Write as _;
 
 fn git_root_fixture(tag: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!(
@@ -541,4 +542,153 @@ fn check_hook_input_given_parse_under_operation_budget_analyzes_deterministicall
         assert_eq!(result.exit_code, first.exit_code);
         assert_eq!(result.message, first.message);
     }
+}
+
+/// A Python `Write` payload: two code lines, then `flagged` default-reason comments, then
+/// `extra` verbatim lines.
+fn volume_payload(flagged: usize, extra: &[&str], cwd: Option<&std::path::Path>) -> String {
+    let mut content = String::from("x = 1\ny = 2\n");
+    for index in 0..flagged {
+        write!(
+            content,
+            "# narration number {index}
+value_{index} = {index}
+"
+        )
+        .unwrap();
+    }
+    for line in extra {
+        content.push_str(line);
+        content.push('\n');
+    }
+    let mut payload = serde_json::json!({
+        "tool_name": "Write",
+        "tool_input": { "file_path": "src/app.py", "content": content },
+    });
+    if let Some(cwd) = cwd {
+        payload["cwd"] = serde_json::json!(cwd);
+    }
+    payload.to_string()
+}
+
+#[test]
+fn check_hook_input_given_twenty_flagged_comments_reports_no_volume() {
+    // given: exactly the limit of flagged comments
+    let input = volume_payload(20, &[], None);
+
+    // when
+    let result = check_hook_input(&input, "");
+
+    // then: every comment is reported on its own reason and the change is not
+    assert_eq!(result.exit_code, 2);
+    assert_eq!(result.message.matches("<comment ").count(), 20);
+    assert!(
+        !result.message.contains("comment-volume"),
+        "message: {}",
+        result.message
+    );
+}
+
+#[test]
+fn check_hook_input_given_twenty_one_flagged_comments_reports_one_volume_at_the_first() {
+    // given: one comment past the limit, the first of them on line 3
+    let input = volume_payload(21, &[], None);
+
+    // when
+    let result = check_hook_input(&input, "");
+
+    // then: 21 per-comment findings plus exactly one low-severity volume finding at line 3
+    assert_eq!(result.exit_code, 2);
+    assert_eq!(
+        result.message.matches("reason=\"comment-volume\"").count(),
+        1
+    );
+    assert_eq!(result.message.matches("<comment ").count(), 22);
+    assert!(
+        result
+            .message
+            .contains("<comment line-number=\"3\" reason=\"comment-volume\" severity=\"low\">"),
+        "message: {}",
+        result.message
+    );
+    assert_eq!(
+        result
+            .message
+            .matches("reason=\"unnecessary-comment\" severity=\"low\"")
+            .count(),
+        21,
+        "per-comment reasons are unchanged: {}",
+        result.message
+    );
+}
+
+#[test]
+fn check_hook_input_given_spared_and_marker_comments_does_not_count_them() {
+    // given: 20 flagged comments plus 10 BDD comments (spared) and an invalid marker (reported
+    // as allow-invalid, not as prose)
+    let spared = ["# given"; 10];
+    let mut extra = spared.to_vec();
+    extra.push("# comment-checker: allow not-a-class -- because");
+    let input = volume_payload(20, &extra, None);
+
+    // when
+    let result = check_hook_input(&input, "");
+
+    // then: neither class inflates the count past the limit
+    assert_eq!(result.exit_code, 2);
+    assert!(
+        result.message.contains("reason=\"allow-invalid\""),
+        "message: {}",
+        result.message
+    );
+    assert!(
+        !result.message.contains("comment-volume"),
+        "message: {}",
+        result.message
+    );
+}
+
+#[test]
+fn check_hook_input_given_config_exemptions_does_not_count_them() {
+    // given: 20 flagged comments plus 5 agent memos that the config exempts for the path
+    let root = git_root_fixture("volume-exempt");
+    std::fs::write(
+        root.join(".comment-checker.json"),
+        r#"{"allow":[{"glob":"src/**","reasons":["agent-memo"],"reason":"legacy notes"}]}"#,
+    )
+    .unwrap();
+    let memos = ["# Changed from old to new"; 5];
+    let input = volume_payload(20, &memos, Some(&root));
+
+    // when
+    let exempted = check_hook_input(&input, "");
+
+    // then: the exempt memos are not counted
+    assert_eq!(exempted.exit_code, 2, "{}", exempted.message);
+    assert!(
+        !exempted.message.contains("comment-volume"),
+        "message: {}",
+        exempted.message
+    );
+
+    // and: an allow entry for the volume reason drops the finding on a change past the limit
+    let over = volume_payload(21, &[], Some(&root));
+    assert!(
+        check_hook_input(&over, "")
+            .message
+            .contains("comment-volume")
+    );
+    std::fs::write(
+        root.join(".comment-checker.json"),
+        r#"{"allow":[{"glob":"src/**","reasons":["comment-volume"],"reason":"generated bulk docs"}]}"#,
+    )
+    .unwrap();
+    let allowed = check_hook_input(&over, "");
+    assert_eq!(allowed.exit_code, 2, "{}", allowed.message);
+    assert!(
+        !allowed.message.contains("comment-volume"),
+        "message: {}",
+        allowed.message
+    );
+    std::fs::remove_dir_all(&root).unwrap();
 }
