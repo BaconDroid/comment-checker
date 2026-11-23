@@ -1,7 +1,9 @@
 name: sf differential
 
 # Advisory compatibility check against the reference classifier. Weekly and on demand only,
-# so it never gates a pull request; the README documents it as off-gate.
+# so it never gates a pull request; the README documents it as off-gate. The .github tree is
+# byte-shared with the sibling repository, so this file must behave in both: it runs where
+# eval/diff_vs_sf.py exists and reports a skip where it does not.
 
 on:
   schedule:
@@ -26,19 +28,19 @@ jobs:
       - name: Set up Rust
         run: rustup toolchain install stable --profile minimal
 
-      - name: Build comment-checker
-        run: cargo build --release -p comment-checker
-
-      - name: Check out the pinned sf checkout
-        uses: actions/checkout@v4
-        with:
-          repository: systemfsoftware/comment-checker
-          ref: 44e1c87
-          path: .sf-checkout
-
-      - name: Build sf
+      - name: Build the local checker
         run: cargo build --release
-        working-directory: .sf-checkout
 
       - name: Differential
-        run: python3 eval/diff_vs_sf.py --sf .sf-checkout/target/release --root src --root tests
+        run: |
+          if [ ! -f eval/diff_vs_sf.py ]; then
+            echo "no sf differential harness in this repository; skipping"
+            exit 0
+          fi
+          package="$(python3 -c 'import tomllib;print(tomllib.load(open("Cargo.toml","rb"))["package"]["name"])')"
+          git clone --no-checkout --filter=blob:none https://github.com/systemfsoftware/comment-checker.git sf-checkout
+          git -C sf-checkout fetch --depth 1 origin 44e1c87
+          git -C sf-checkout checkout 44e1c87
+          (cd sf-checkout && cargo build --release)
+          python3 eval/diff_vs_sf.py --cc "target/release/${package}" \
+            --sf sf-checkout/target/release --root src --root tests
