@@ -208,6 +208,10 @@ see [`CONCEPTS.md`](CONCEPTS.md) for the shared vocabulary (verdict, reason, evi
 floor, and the difference between fail-open and a silent pass), and [`NOTICE`](NOTICE) for upstream
 attribution.
 
+### Opt-in HEAD baseline
+
+`COMMENT_CHECKER_WRITE_BASELINE=1` makes a whole-file `Write` report only comments on lines that differ from the file at `HEAD`. It needs the payload `cwd` to resolve `HEAD:<path>` through git; anything that fails (no flag value of exactly `1`, no repository, no blob) falls back to the current whole-file report, so the pass is never silent. `Edit`/`MultiEdit` and `--strip` are unaffected.
+
 ## languages
 
 the binary compiles 35 grammars (`.cargo/config.toml`, `TSLP_LANGUAGES`): bash, c, cpp, csharp, css,

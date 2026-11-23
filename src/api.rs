@@ -254,7 +254,9 @@ fn evaluate(
             if content.is_empty() {
                 return HookOutcome::Skipped("No content to check".to_owned());
             }
-            match check_write_fragment(content, file_path, include_docstrings) {
+            let baseline = write_baseline(file_path, &hook_input.cwd);
+            match check_write_fragment(content, file_path, include_docstrings, baseline.as_deref())
+            {
                 Ok(fragment) => fragment,
                 Err(error) => return detect_failure(error),
             }
@@ -309,14 +311,27 @@ fn check_write_fragment(
     content: &str,
     file_path: &str,
     include_docstrings: bool,
+    baseline: Option<&str>,
 ) -> Result<FragmentCheck, DetectError> {
     let comments = CommentDetector::detect_checked(content, file_path, include_docstrings)?;
     let analysis = analyze_suppression(content, &comments, None);
-    Ok(FragmentCheck {
-        comments,
-        marker_reasons: analysis.marker_reasons,
+    let base = baseline.map(|base| engine::added_lines(base, content));
+    let mut checked = FragmentCheck {
         suppressed: analysis.suppressed,
-    })
+        ..FragmentCheck::default()
+    };
+    for (index, comment) in comments.into_iter().enumerate() {
+        let introduced = base
+            .as_ref()
+            .is_none_or(|lines| lines.contains(&comment.line_number.saturating_sub(1)));
+        if introduced {
+            checked.comments.push(comment);
+            checked
+                .marker_reasons
+                .push(analysis.marker_reasons.get(index).copied().flatten());
+        }
+    }
+    Ok(checked)
 }
 
 fn check_edit_fragment(
@@ -880,6 +895,24 @@ fn get_content_to_check(input: &HookInput) -> &str {
     } else {
         input.tool_input.content.as_str()
     }
+}
+
+const WRITE_BASELINE_ENV: &str = "COMMENT_CHECKER_WRITE_BASELINE";
+
+fn write_baseline(file_path: &str, cwd: &str) -> Option<String> {
+    if std::env::var(WRITE_BASELINE_ENV).ok().as_deref() != Some("1") {
+        return None;
+    }
+    let output = std::process::Command::new("git")
+        .arg("show")
+        .arg(format!("HEAD:{file_path}"))
+        .current_dir(if cwd.is_empty() { "." } else { cwd })
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    String::from_utf8(output.stdout).ok()
 }
 
 fn skip(reason: &str) -> HookCheckResult {

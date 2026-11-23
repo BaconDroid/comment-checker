@@ -827,3 +827,78 @@ fn check_hook_input_given_config_exemption_drops_the_duplicate_finding() {
     );
     std::fs::remove_dir_all(&root).unwrap();
 }
+
+#[test]
+fn check_hook_input_given_write_baseline_reports_only_added_comments() {
+    // given: a git root whose HEAD already holds the legacy file with one old comment
+    let root = git_root_fixture("baseline");
+    std::fs::write(root.join("app.py"), "# legacy note\nx = 1\n").unwrap();
+    let git = |args: &[&str]| {
+        std::process::Command::new("git")
+            .args(args)
+            .current_dir(&root)
+            .output()
+            .expect("git runs")
+    };
+    git(&["init", "-q"]);
+    git(&["add", "."]);
+    git(&[
+        "-c",
+        "user.email=t@example.com",
+        "-c",
+        "user.name=T",
+        "commit",
+        "-qm",
+        "base",
+    ]);
+    let content = "# legacy note\n# fresh note\nx = 1\n";
+    let input = serde_json::json!({
+        "tool_name": "Write",
+        "tool_input": { "file_path": "app.py", "content": content },
+        "cwd": root,
+    })
+    .to_string();
+
+    // when: the opt-in baseline is on
+    let with_baseline = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(format!(
+            "printf '%s' '{}' | COMMENT_CHECKER_WRITE_BASELINE=1 {}",
+            input.replace('\'', "'\\''"),
+            env!("CARGO_BIN_EXE_comment-checker")
+        ))
+        .output()
+        .expect("hook runs");
+    let baseline_message = String::from_utf8_lossy(&with_baseline.stderr).into_owned();
+
+    // then: the unchanged legacy comment is filtered out, the fresh one is reported
+    assert!(
+        baseline_message.contains("reason=\"unnecessary-comment\""),
+        "baseline stderr: {baseline_message}"
+    );
+    assert!(
+        baseline_message.contains("<comment line-number=\"2\""),
+        "baseline stderr: {baseline_message}"
+    );
+    assert!(
+        !baseline_message.contains("legacy note"),
+        "baseline stderr: {baseline_message}"
+    );
+
+    // and: without the flag the whole file is reported again
+    let without = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(format!(
+            "printf '%s' '{}' | {}",
+            input.replace('\'', "'\\''"),
+            env!("CARGO_BIN_EXE_comment-checker")
+        ))
+        .output()
+        .expect("hook runs");
+    let full_message = String::from_utf8_lossy(&without.stderr);
+    assert!(
+        full_message.contains("legacy note"),
+        "full stderr: {full_message}"
+    );
+    std::fs::remove_dir_all(&root).unwrap();
+}
