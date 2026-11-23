@@ -733,3 +733,112 @@ fn cli_given_strip_does_not_remove_duplicate_findings() -> std::io::Result<()> {
     assert!(!stderr.contains("removed 3"), "stderr: {stderr}");
     Ok(())
 }
+
+fn run_checker_with_metrics(
+    input: &str,
+    args: &[&str],
+    metrics: Option<&str>,
+) -> std::io::Result<std::process::Output> {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_comment-checker"));
+    command
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .env_remove("COMMENT_CHECKER_METRICS");
+    if let Some(value) = metrics {
+        command.env("COMMENT_CHECKER_METRICS", value);
+    }
+    let mut child = command.spawn()?;
+    let Some(stdin) = child.stdin.as_mut() else {
+        return Err(std::io::Error::other("checker stdin unavailable"));
+    };
+    stdin.write_all(input.as_bytes())?;
+    child.wait_with_output()
+}
+
+#[test]
+fn cli_metrics_flag_off_matches_the_flag_on_message_byte_for_byte() -> std::io::Result<()> {
+    // given: a payload that reports one agent memo
+    let input = r##"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"# Changed from old to new\nx = 1\n"}}"##;
+
+    // when
+    let off = run_checker_with_metrics(input, &[], None)?;
+    let on = run_checker_with_metrics(input, &[], Some("1"))?;
+
+    // then: the finding output is identical and only metrics lines differ
+    let off_stderr = String::from_utf8_lossy(&off.stderr).into_owned();
+    let on_stderr = String::from_utf8_lossy(&on.stderr).into_owned();
+    assert_eq!(off.status.code(), on.status.code());
+    let finding = |text: &str| {
+        text.lines()
+            .filter(|line| !line.starts_with("[check-comments] metrics:"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    assert_eq!(finding(&off_stderr), finding(&on_stderr));
+    assert!(!off_stderr.contains("metrics:"), "{off_stderr}");
+    assert_eq!(
+        on_stderr
+            .lines()
+            .filter(|line| line.starts_with("[check-comments] metrics:"))
+            .count(),
+        1,
+        "{on_stderr}"
+    );
+    assert!(
+        on_stderr.contains("[check-comments] metrics: agent-memo 1"),
+        "{on_stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn cli_metrics_flag_other_values_emit_nothing() -> std::io::Result<()> {
+    // given
+    let input = r##"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"# Changed from old to new\nx = 1\n"}}"##;
+
+    // when
+    let output = run_checker_with_metrics(input, &[], Some("yes"))?;
+
+    // then
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("metrics:"), "{stderr}");
+    Ok(())
+}
+
+#[test]
+fn cli_metrics_report_withheld_reasons_with_distinct_keys() -> std::io::Result<()> {
+    // given: one prose comment the high floor drops, in a root whose config exempts an agent memo
+    let dir = TempDir::new("metrics-withheld")?;
+    std::fs::create_dir_all(dir.path().join(".git"))?;
+    std::fs::write(
+        dir.path().join(".comment-checker.json"),
+        r#"{"allow":[{"glob":"memo.py","reasons":["agent-memo"],"reason":"legacy notes approved"}]}"#,
+    )?;
+    let memo_input = format!(
+        r##"{{"tool_name":"Write","tool_input":{{"file_path":"memo.py","content":"# Changed from old to new\nx = 1\n"}},"cwd":"{}"}}"##,
+        dir.path().display()
+    );
+    let prose_input = r##"{"tool_name":"Write","tool_input":{"file_path":"a.py","content":"# plain prose\nx = 1\n"}}"##;
+
+    // when
+    let memo = run_checker_with_metrics(&memo_input, &[], Some("1"))?;
+    let prose = run_checker_with_metrics(prose_input, &["--min-confidence", "high"], Some("1"))?;
+
+    // then: withheld findings carry their own key and the exit codes stay clean
+    assert_eq!(memo.status.code(), Some(0));
+    assert_eq!(prose.status.code(), Some(0));
+    let memo_stderr = String::from_utf8_lossy(&memo.stderr);
+    let prose_stderr = String::from_utf8_lossy(&prose.stderr);
+    assert!(
+        memo_stderr.contains("[check-comments] metrics: withheld-config:agent-memo 1"),
+        "{memo_stderr}"
+    );
+    assert!(
+        prose_stderr
+            .contains("[check-comments] metrics: withheld-confidence:unnecessary-comment 1"),
+        "{prose_stderr}"
+    );
+    Ok(())
+}

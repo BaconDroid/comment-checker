@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::detector::{CommentDetector, DetectError};
 use crate::engine::{self, null_default};
 use crate::filters::{
-    CONFIG_FILE_NAME, SuppressionConfig, analyze_suppression, apply_filters_with_markers,
-    apply_min_confidence, is_config_path, is_synthetic_reason,
+    CONFIG_FILE_NAME, FilterMetrics, SuppressionConfig, analyze_suppression,
+    apply_filters_with_markers, apply_min_confidence, is_config_path, is_synthetic_reason,
 };
 use crate::language::language_for_path;
 use crate::models::{CommentInfo, Edit};
@@ -279,15 +279,23 @@ fn evaluate(
         );
     }
     let config = SuppressionConfig::load(Some(hook_input.cwd.as_str()));
-    let filtered = apply_min_confidence(
-        apply_filters_with_markers(&checked.comments, &checked.marker_reasons, &config),
-        min_confidence,
+    let mut metrics = FilterMetrics::default();
+    let pre_gate = apply_filters_with_markers(
+        &checked.comments,
+        &checked.marker_reasons,
+        &config,
+        &mut metrics,
     );
+    let filtered = apply_min_confidence(pre_gate.clone(), min_confidence);
+    let counts = metric_counts(&filtered, &pre_gate, min_confidence, &metrics);
     if filtered.is_empty() {
+        report_metrics(&counts);
         return HookOutcome::Clean;
     }
 
-    HookOutcome::Findings(format_hook_message(&filtered, custom_prompt))
+    let message = format_hook_message(&filtered, custom_prompt);
+    report_metrics(&counts);
+    HookOutcome::Findings(message)
 }
 
 /// One analyzed fragment: the comments the hook reports, their marker reasons, and whether a
@@ -450,7 +458,12 @@ fn evaluate_strip(
     crate::filters::contextualize(&mut comments, &content, true);
     let config = SuppressionConfig::load(Some(hook_input.cwd.as_str()));
     let filtered = apply_min_confidence(
-        apply_filters_with_markers(&comments, &analysis.marker_reasons, &config),
+        apply_filters_with_markers(
+            &comments,
+            &analysis.marker_reasons,
+            &config,
+            &mut FilterMetrics::default(),
+        ),
         min_confidence,
     );
     if filtered.is_empty() {
@@ -886,6 +899,69 @@ pub fn detect_comments_json(content: &str, file_path: &str, include_docstrings: 
         Ok(comments) => serde_json::to_string(&comments)
             .unwrap_or_else(|error| engine::fallback_json(&error.to_string())),
         Err(error) => engine::result_json(&HookOutcome::Failed(error.to_string()).into_result()),
+    }
+}
+
+const METRICS_ENV: &str = "COMMENT_CHECKER_METRICS";
+
+fn confidence_rank(level: Option<&str>) -> u8 {
+    match level {
+        Some("medium") => 1,
+        Some("high") => 2,
+        _ => 0,
+    }
+}
+
+fn severity_rank(reason: &str) -> Option<u8> {
+    crate::filters::severity_for_reason(reason).map(|severity| match severity {
+        crate::models::Severity::High => 2,
+        crate::models::Severity::Medium => 1,
+        crate::models::Severity::Low => 0,
+    })
+}
+fn metric_counts(
+    reported: &[CommentInfo],
+    unfiltered: &[CommentInfo],
+    min_confidence: Option<&str>,
+    metrics: &crate::filters::FilterMetrics,
+) -> std::collections::BTreeMap<String, usize> {
+    let mut counts = std::collections::BTreeMap::new();
+    for comment in reported {
+        if let Some(reason) = comment.metadata.get("reason") {
+            *counts.entry(reason.clone()).or_default() += 1;
+        }
+    }
+    for (reason, count) in &metrics.suppressed_reasons {
+        *counts
+            .entry(format!("withheld-config:{reason}"))
+            .or_default() += *count;
+    }
+    let floor = confidence_rank(min_confidence);
+    if floor > 0 {
+        for comment in unfiltered {
+            let reason = comment.metadata.get("reason").map_or("", String::as_str);
+            if reported
+                .iter()
+                .any(|kept| kept.line_number == comment.line_number && kept.text == comment.text)
+            {
+                continue;
+            }
+            if severity_rank(reason).is_some_and(|rank| rank < floor) {
+                *counts
+                    .entry(format!("withheld-confidence:{reason}"))
+                    .or_default() += 1;
+            }
+        }
+    }
+    counts
+}
+
+fn report_metrics(counts: &std::collections::BTreeMap<String, usize>) {
+    if std::env::var(METRICS_ENV).ok().as_deref() != Some("1") {
+        return;
+    }
+    for (reason, count) in counts {
+        eprintln!("[check-comments] metrics: {reason} {count}");
     }
 }
 
