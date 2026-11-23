@@ -24,6 +24,50 @@ pub enum Severity {
     Low,
 }
 
+/// How much `--strip` may remove on its own, shared with test-checker.
+///
+/// `conservative` removes only proven structural problems, `balanced` adds the audited
+/// heuristics, and `aggressive` removes everything the detector flags.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StripPolicy {
+    Conservative,
+    Balanced,
+    Aggressive,
+}
+
+impl StripPolicy {
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "conservative" => Some(Self::Conservative),
+            "balanced" => Some(Self::Balanced),
+            "aggressive" => Some(Self::Aggressive),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Conservative => "conservative",
+            Self::Balanced => "balanced",
+            Self::Aggressive => "aggressive",
+        }
+    }
+
+    /// Whether a reason at this severity may be removed on its own.
+    ///
+    /// comment-checker's residual prose (`unnecessary-comment`) is a low-tier reason but the
+    /// normal cleanup target, so `balanced` covers every tier and `conservative` is the opt-out
+    /// for a tree where only proven smells should disappear.
+    #[must_use]
+    pub(crate) const fn allows(self, severity: Severity) -> bool {
+        match self {
+            Self::Aggressive | Self::Balanced => true,
+            Self::Conservative => matches!(severity, Severity::High),
+        }
+    }
+}
+
 impl Severity {
     #[must_use]
     pub const fn as_str(self) -> &'static str {

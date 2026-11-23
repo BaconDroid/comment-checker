@@ -260,7 +260,9 @@ as `proven-only`, and the variable is read on every run.
 | option | behavior |
 |---|---|
 | `--prompt <text>` | replace the default message. `{{comments}}` is replaced by the XML; without it the custom text is the whole message |
-| `--strip` | after reporting, remove every flagged comment from the target file; all-or-nothing (see [strip](#strip)) |
+| `--strip` | after reporting, remove the flagged comments an approval covers and the policy allows; all-or-nothing (see [strip](#strip)) |
+| `--strip-policy <level>` | `conservative` (high severity only), `balanced` (default: every tier), or `aggressive` (same as balanced pending a stricter audit) |
+| `--propose` | report what `--strip` would remove and write nothing |
 | `--version` | print `comment-checker <version>` to stdout and exit `0` |
 | `--min-confidence <level>` | accepted by the shared argument parser and ignored (comments carry no confidence) |
 
@@ -300,9 +302,10 @@ message gains a trailing `[comment-checker] strip: ...` summary.
   analyzes its full content, so the report is the one a whole-file `Write` would produce - a partial
   `Edit`/`MultiEdit` fragment is not enough to decide what to rewrite. When the file is missing the
   run falls back to the payload content and reports it without rewriting anything.
-- **Removable set.** Every comment the run flags is removed. Spared classes (BDD, directives,
-  shebangs, license/generated/public-API/attribution/intent) are never flagged, so they are never
-  removed; a `comment-checker: allow` marker suppresses the run and leaves the file untouched.
+- **Removable set.** Every comment the run flags is removed, subject to the
+  [strip policy](#strip-policy). Spared classes (BDD, directives, shebangs,
+  license/generated/public-API/attribution/intent) are never flagged, so they are never removed;
+  a `comment-checker: allow` marker suppresses the run and leaves the file untouched.
   Flagged docstrings are removable too.
 - **Approved removals.** `<git root>/.comment-checker.json` may carry `"remove": [{"glob", "reasons",
   "reason"}]`. When it does, `--strip` removes a flagged comment only if its path matches a `glob`
@@ -327,6 +330,22 @@ comment-checker --strip < hook.json
 
 A plugin can call the binary this way after a write; `BaconDroid/opencode-guard-plugin` combines
 this removal pass with `test-checker`.
+
+## strip policy
+
+`--strip-policy` decides which severity tiers the cleanup pass may remove on its own, identically
+in `comment-checker` and `test-checker`:
+
+| Level | Removes | Use |
+|:--|:--|:--|
+| `conservative` | high severity only | the proven smells; a legacy tree you want to keep quiet |
+| `balanced` (default) | every tier | the normal cleanup: the reported reason is the target |
+| `aggressive` | every tier | reserved for a future stricter audit; today identical to `balanced` |
+
+`balanced` is today's behaviour: `comment-checker` reports and `--strip` removes the same set. The
+policy narrows the removal; an approval narrows it again when a `remove` entry exists. `--propose`
+prints the list and the aggregate count without writing, so the same review can happen before an
+`--strip` run.
 
 ## limits
 

@@ -88,6 +88,7 @@ ALIASES = {
     "CommentType": "Kind",
     "Confidence": "Kind",
     "Severity": "Kind",
+    "StripPolicy": "Kind",
     "build_comments_xml": "build_xml",
     "build_findings_xml": "build_xml",
     "detect_comments_json": "detect_json",
