@@ -277,7 +277,7 @@ fn cli_given_strip_removes_a_whole_file_comment() -> std::io::Result<()> {
     let input = strip_payload("a.py", dir.path());
 
     // when
-    let output = run_checker(&input, &["--strip"])?;
+    let output = run_checker(&input, &["--strip", "--strip-policy", "aggressive"])?;
 
     // then
     assert_eq!(output.status.code(), Some(2));
@@ -299,7 +299,10 @@ fn cli_given_strip_keeps_trailing_code_and_line_ending() -> std::io::Result<()> 
     std::fs::write(&file, "x = 1  # explain x\ny = 2\n")?;
 
     // when
-    let output = run_checker(&strip_payload("b.py", dir.path()), &["--strip"])?;
+    let output = run_checker(
+        &strip_payload("b.py", dir.path()),
+        &["--strip", "--strip-policy", "aggressive"],
+    )?;
 
     // then
     assert_eq!(output.status.code(), Some(2));
@@ -315,7 +318,10 @@ fn cli_given_strip_removes_a_block_comment_and_its_empty_line() -> std::io::Resu
     std::fs::write(&file, "/*\n * narration\n */\nint x = 1;\n")?;
 
     // when
-    let output = run_checker(&strip_payload("c.c", dir.path()), &["--strip"])?;
+    let output = run_checker(
+        &strip_payload("c.c", dir.path()),
+        &["--strip", "--strip-policy", "aggressive"],
+    )?;
 
     // then
     assert_eq!(output.status.code(), Some(2));
@@ -331,7 +337,10 @@ fn cli_given_strip_drops_an_emptied_line_but_keeps_a_blank_one() -> std::io::Res
     std::fs::write(&file, "// c\n/* a */ // b\n\ncode = 1;\n")?;
 
     // when
-    let output = run_checker(&strip_payload("mixed.c", dir.path()), &["--strip"])?;
+    let output = run_checker(
+        &strip_payload("mixed.c", dir.path()),
+        &["--strip", "--strip-policy", "aggressive"],
+    )?;
 
     // then
     assert_eq!(output.status.code(), Some(2));
@@ -347,7 +356,10 @@ fn cli_given_strip_removes_a_flagged_docstring() -> std::io::Result<()> {
     std::fs::write(&file, "def f():\n    \"\"\"docstring\"\"\"\n    pass\n")?;
 
     // when
-    let output = run_checker(&strip_payload("d.py", dir.path()), &["--strip"])?;
+    let output = run_checker(
+        &strip_payload("d.py", dir.path()),
+        &["--strip", "--strip-policy", "aggressive"],
+    )?;
 
     // then
     assert_eq!(output.status.code(), Some(2));
@@ -363,7 +375,10 @@ fn cli_given_strip_spares_a_bdd_comment_and_exits_zero() -> std::io::Result<()> 
     std::fs::write(&file, "# given\nprint(1)\n")?;
 
     // when
-    let output = run_checker(&strip_payload("e.py", dir.path()), &["--strip"])?;
+    let output = run_checker(
+        &strip_payload("e.py", dir.path()),
+        &["--strip", "--strip-policy", "aggressive"],
+    )?;
 
     // then
     assert!(output.status.success());
@@ -385,7 +400,10 @@ fn cli_given_strip_respects_the_suppression_marker() -> std::io::Result<()> {
     std::fs::write(&file, original)?;
 
     // when
-    let output = run_checker(&strip_payload("f.py", dir.path()), &["--strip"])?;
+    let output = run_checker(
+        &strip_payload("f.py", dir.path()),
+        &["--strip", "--strip-policy", "aggressive"],
+    )?;
 
     // then
     assert!(output.status.success());
@@ -409,7 +427,10 @@ fn cli_given_strip_ignores_a_marker_inside_a_string_literal() -> std::io::Result
     )?;
 
     // when
-    let output = run_checker(&strip_payload("j.py", dir.path()), &["--strip"])?;
+    let output = run_checker(
+        &strip_payload("j.py", dir.path()),
+        &["--strip", "--strip-policy", "aggressive"],
+    )?;
 
     // then
     assert_eq!(output.status.code(), Some(2));
@@ -439,7 +460,7 @@ fn cli_given_strip_analyzes_the_file_not_the_payload_content() -> std::io::Resul
     .to_string();
 
     // when
-    let output = run_checker(&input, &["--strip"])?;
+    let output = run_checker(&input, &["--strip", "--strip-policy", "aggressive"])?;
 
     // then
     assert!(output.status.success());
@@ -459,7 +480,7 @@ fn cli_given_strip_missing_file_reports_payload_without_creating_it() -> std::io
     .to_string();
 
     // when
-    let output = run_checker(&input, &["--strip"])?;
+    let output = run_checker(&input, &["--strip", "--strip-policy", "aggressive"])?;
 
     // then
     assert_eq!(output.status.code(), Some(2));
@@ -478,7 +499,10 @@ fn cli_given_strip_leaves_the_file_untouched_when_a_comment_is_ambiguous() -> st
     std::fs::write(&file, original)?;
 
     // when
-    let output = run_checker(&strip_payload("h.html", dir.path()), &["--strip"])?;
+    let output = run_checker(
+        &strip_payload("h.html", dir.path()),
+        &["--strip", "--strip-policy", "aggressive"],
+    )?;
 
     // then
     assert_eq!(output.status.code(), Some(2));
@@ -519,7 +543,10 @@ fn cli_strip_removes_only_the_comments_a_remove_entry_approves() -> std::io::Res
     )?;
 
     // when
-    let output = run_checker(&strip_payload("src/app.py", dir.path()), &["--strip"])?;
+    let output = run_checker(
+        &strip_payload("src/app.py", dir.path()),
+        &["--strip", "--strip-policy", "aggressive"],
+    )?;
 
     // then: the approved classes go, the TODO stays and is reported as kept
     assert_eq!(output.status.code(), Some(2));
@@ -560,7 +587,10 @@ fn cli_strip_keeps_a_comment_when_no_remove_entry_matches_its_path_or_reason() -
         let (dir, file) = approval_fixture(label, config)?;
 
         // when
-        let output = run_checker(&strip_payload("src/app.py", dir.path()), &["--strip"])?;
+        let output = run_checker(
+            &strip_payload("src/app.py", dir.path()),
+            &["--strip", "--strip-policy", "aggressive"],
+        )?;
 
         // then: nothing is approved, so the file is untouched and every finding is kept
         assert_eq!(output.status.code(), Some(2), "{label}");
@@ -601,7 +631,10 @@ fn cli_strip_ignores_malformed_blank_and_unreadable_remove_config() -> std::io::
         let (dir, file) = approval_fixture(label, config)?;
 
         // when
-        let output = run_checker(&strip_payload("src/app.py", dir.path()), &["--strip"])?;
+        let output = run_checker(
+            &strip_payload("src/app.py", dir.path()),
+            &["--strip", "--strip-policy", "aggressive"],
+        )?;
 
         // then: an entry that fails validation approves nothing, and a broken file fails closed
         assert_eq!(output.status.code(), Some(2), "{label}");
@@ -629,9 +662,12 @@ fn cli_strip_allow_entries_never_approve_removal_and_a_config_without_remove_str
     )?;
 
     // when
-    let output = run_checker(&strip_payload("src/app.py", dir.path()), &["--strip"])?;
+    let output = run_checker(
+        &strip_payload("src/app.py", dir.path()),
+        &["--strip", "--strip-policy", "aggressive"],
+    )?;
 
-    // then: with no approval list, `--strip` removes every flagged comment as it did before
+    // then: with no approval list the aggressive run removes every flagged comment
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
@@ -691,7 +727,10 @@ fn cli_given_strip_never_removes_for_the_volume_finding() -> std::io::Result<()>
     std::fs::write(&file, content)?;
 
     // when
-    let output = run_checker(&strip_payload("a.py", dir.path()), &["--strip"])?;
+    let output = run_checker(
+        &strip_payload("a.py", dir.path()),
+        &["--strip", "--strip-policy", "aggressive"],
+    )?;
 
     // then: only the 21 comments are removed; the volume finding is not a removal target
     assert_eq!(output.status.code(), Some(2));
@@ -725,7 +764,7 @@ fn cli_given_strip_does_not_remove_duplicate_findings() -> std::io::Result<()> {
     let input = strip_payload("tests/app.py", &dir.0);
 
     // when
-    let output = run_checker(&input, &["--strip"])?;
+    let output = run_checker(&input, &["--strip", "--strip-policy", "aggressive"])?;
 
     // then: the duplicate finding is synthetic, so nothing is rewritten on its account
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -880,8 +919,11 @@ fn cli_strip_propose_lists_the_removal_without_writing() -> std::io::Result<()> 
     )?;
     let input = strip_payload("p.py", dir.path());
 
-    // when
-    let output = run_checker(&input, &["--strip", "--propose"])?;
+    // when: aggressive is the level that covers a low reason
+    let output = run_checker(
+        &input,
+        &["--strip", "--strip-policy", "aggressive", "--propose"],
+    )?;
 
     // then: the proposal names the count and policy, and the file is untouched
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -945,5 +987,30 @@ fn cli_strip_policy_ladder_matches_the_shared_tiers() -> std::io::Result<()> {
             );
         }
     }
+    Ok(())
+}
+
+#[test]
+fn cli_strip_without_a_policy_defaults_to_balanced() -> std::io::Result<()> {
+    // given: a prose-only comment, approved for removal
+    let dir = TempDir::new("default-balanced")?;
+    let file = dir.path().join("d.py");
+    std::fs::write(&file, "# legacy prose\nx = 1\n")?;
+    std::fs::write(
+        dir.path().join(".comment-checker.json"),
+        r#"{"remove":[{"glob":"d.py","reasons":["unnecessary-comment"],"reason":"legacy prose approved"}]}"#,
+    )?;
+    let input = strip_payload("d.py", dir.path());
+
+    // when: no policy flag at all
+    let output = run_checker(&input, &["--strip"])?;
+
+    // then: the balanced default keeps the low reason awaiting approval
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("left untouched - kept 1 flagged comment(s) awaiting approval"),
+        "stderr: {stderr}"
+    );
+    assert_eq!(std::fs::read_to_string(&file)?, "# legacy prose\nx = 1\n");
     Ok(())
 }
