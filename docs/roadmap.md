@@ -26,7 +26,6 @@ the same branch name in both repositories.
 
 | # | Item | Status |
 |:-:|:-----|:------|
-| C2 | Reason-count metrics behind an env flag, plus a per-reason flag rate across the replay corpus, so the severity cutoffs are measured rather than asserted. | later |
 
 ## Block D - Evaluation
 
