@@ -942,15 +942,12 @@ pub fn detect_comments_json(content: &str, file_path: &str, include_docstrings: 
 
 const METRICS_ENV: &str = "COMMENT_CHECKER_METRICS";
 
-/// The requested `--strip-policy`; absent or unknown values keep comment-checker's historical
-/// default, where `--strip` removes every reason it flags.
-///
-/// The ladder itself is identical to test-checker's (`conservative` < `balanced` < `aggressive`),
-/// so a stricter default here is a one-value change, not a new vocabulary.
+/// The requested `--strip-policy`; absent or unknown values are `balanced`, the same default as
+/// test-checker. A tree that wants every flagged reason removed passes `aggressive` explicitly.
 fn parse_strip_policy(value: Option<&str>) -> StripPolicy {
     value
         .and_then(|value| StripPolicy::parse(value.trim()))
-        .unwrap_or(StripPolicy::Aggressive)
+        .unwrap_or(StripPolicy::Balanced)
 }
 
 fn confidence_rank(level: Option<&str>) -> u8 {

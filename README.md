@@ -261,7 +261,7 @@ as `proven-only`, and the variable is read on every run.
 |---|---|
 | `--prompt <text>` | replace the default message. `{{comments}}` is replaced by the XML; without it the custom text is the whole message |
 | `--strip` | after reporting, remove the flagged comments an approval covers and the policy allows; all-or-nothing (see [strip](#strip)) |
-| `--strip-policy <level>` | `conservative` (high severity only), `balanced` (high and medium), or `aggressive` (default: every tier) |
+| `--strip-policy <level>` | `conservative` (high severity only), `balanced` (default: high and medium), or `aggressive` (every tier) |
 | `--propose` | report what `--strip` would remove and write nothing |
 | `--version` | print `comment-checker <version>` to stdout and exit `0` |
 | `--min-confidence <level>` | accepted by the shared argument parser and ignored (comments carry no confidence) |
@@ -315,8 +315,8 @@ message gains a trailing `[comment-checker] strip: ...` summary.
   `glob`, no `reasons`, or a blank `reason` is dropped, so `"remove": []` approves nothing, and a
   config file that cannot be parsed approves nothing. Only `--strip` reads `remove`; it never
   exempts a finding, and an `allow` entry never approves a removal. With no `remove` key (or no
-  config) the [strip policy](#strip-policy) alone decides, at its `aggressive` default every
-  flagged comment.
+  config) the [strip policy](#strip-policy) alone decides: `balanced` keeps the low-tier prose, and
+  `aggressive` removes it.
 - **Rewrite rules.** A comment that owns its line removes the whole line including its ending. A
   trailing comment removes the comment and the whitespace before it, keeping the code and the line
   ending. A block comment or docstring removes its span; a line left empty by that removal is
@@ -340,14 +340,16 @@ in `comment-checker` and `test-checker`:
 | Level | Removes | Use |
 |:--|:--|:--|
 | `conservative` | high severity only | the proven smells: commented-out code, agent memos, TODOs, past-facing narration |
-| `balanced` | high and medium | adds the adjacency-dependent reasons (`restates-code`, `narrates-control-flow`) |
-| `aggressive` (default) | every tier | also the residual prose (`unnecessary-comment`) and the synthetic summaries; today's behaviour |
+| `balanced` (default) | high and medium | adds the adjacency-dependent reasons (`restates-code`, `narrates-control-flow`) |
+| `aggressive` | every tier | also the residual prose (`unnecessary-comment`) and the synthetic summaries |
 
-The ladder is the same in both binaries, so `conservative` < `balanced` < `aggressive` means the
-same thing in `comment-checker` and `test-checker`. comment-checker keeps `aggressive` as its default
-because its normal cleanup target is the residual prose; test-checker defaults to `balanced` because
-its low tier is still telemetry. An approval still gates every removal: the policy narrows what an
-entry may remove, it never replaces the entry.
+The ladder and the default are the same in both binaries. Because `unnecessary-comment` - the
+residual prose this hook normally targets - is a low-tier reason, `--strip` at the default
+`balanced` keeps it awaiting an explicit `aggressive`. A tree that wants the old
+remove-everything behaviour states `--strip-policy aggressive` (or sets it in the tuple options).
+
+An approval still gates every removal: the policy narrows what an entry may remove, it never
+replaces the entry.
 
 `--propose` prints the count and the policy that would apply without writing, so the review happens
 before the run.
