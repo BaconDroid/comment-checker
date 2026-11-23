@@ -30,7 +30,7 @@ the same branch name in both repositories.
 
 | # | Item | Status |
 |:-:|:-----|:------|
-| D2 | Secondary OSS corpus with a tracked manifest (URL, license, HEAD, commit and path per payload; payload bytes outside the checkout). | later |
+| D2 | A second OSS corpus beyond `eval/sf-corpus` (systemfsoftware, pinned `44e1c87`, Apache-2.0, already manifest-documented): pick a repository, record URL/license/HEAD/commit/path per payload outside the checkout, and diff it against the current binary. | later |
 
 | D3 | Restore the weekly sf-differential workflow that `eval/README.md` references but the repository does not contain. | later |
 
