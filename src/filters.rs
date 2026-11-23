@@ -982,7 +982,8 @@ struct ConfigFile {
 struct ConfigEntry {
     #[serde(default)]
     glob: String,
-    #[serde(default)]
+    /// Canonical name, shared with test-checker; `rules` is the pre-unification alias.
+    #[serde(default, alias = "rules")]
     reasons: Vec<String>,
     #[serde(default)]
     reason: String,
