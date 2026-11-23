@@ -15,7 +15,6 @@ the same branch name in both repositories.
 |:-:|:-----|:------|
 | A4 | Duplicate and near-duplicate comments within a file, excluding spared classes and requiring a token floor. | later |
 
-| A3 | `comment-volume`: more than N comments added in one change, reported once at the first added comment, at low severity. | later |
 
 ## Block B - Repo-level configuration
 
