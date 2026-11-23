@@ -13,7 +13,6 @@ the same branch name in both repositories.
 
 | # | Item | Status |
 |:-:|:-----|:------|
-| A4 | Duplicate and near-duplicate comments within a file, excluding spared classes and requiring a token floor. | later |
 
 
 ## Block B - Repo-level configuration
