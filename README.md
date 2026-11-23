@@ -315,7 +315,8 @@ message gains a trailing `[comment-checker] strip: ...` summary.
   `glob`, no `reasons`, or a blank `reason` is dropped, so `"remove": []` approves nothing, and a
   config file that cannot be parsed approves nothing. Only `--strip` reads `remove`; it never
   exempts a finding, and an `allow` entry never approves a removal. With no `remove` key (or no
-  config), every flagged comment is removed.
+  config) the [strip policy](#strip-policy) alone decides, at its `aggressive` default every
+  flagged comment.
 - **Rewrite rules.** A comment that owns its line removes the whole line including its ending. A
   trailing comment removes the comment and the whitespace before it, keeping the code and the line
   ending. A block comment or docstring removes its span; a line left empty by that removal is
