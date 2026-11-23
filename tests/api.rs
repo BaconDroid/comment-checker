@@ -692,3 +692,138 @@ fn check_hook_input_given_config_exemptions_does_not_count_them() {
     );
     std::fs::remove_dir_all(&root).unwrap();
 }
+
+fn duplicate_payload(content: &str, cwd: Option<&std::path::Path>) -> String {
+    let mut payload = serde_json::json!({
+        "tool_name": "Write",
+        "tool_input": { "file_path": "src/app.py", "content": content },
+    });
+    if let Some(cwd) = cwd {
+        payload["cwd"] = serde_json::json!(cwd);
+    }
+    payload.to_string()
+}
+
+#[test]
+fn check_hook_input_given_exact_duplicate_comments_cites_the_earlier_line() {
+    // given: the same comment twice, each flagged on its own
+    let content = "# the retry budget is finite\nx = 1\n# the retry budget is finite\ny = 2\n";
+    let input = duplicate_payload(content, None);
+
+    // when
+    let result = check_hook_input(&input, "");
+
+    // then: one duplicate finding on the later comment cites the first one at line 1
+    assert_eq!(result.exit_code, 2, "{}", result.message);
+    assert_eq!(
+        result
+            .message
+            .lines()
+            .filter(|line| line.contains("reason=\"duplicate-comment\""))
+            .count(),
+        1,
+        "{}",
+        result.message
+    );
+    assert!(
+        result
+            .message
+            .contains("<comment line-number=\"3\" reason=\"duplicate-comment\" severity=\"low\">"),
+        "{}",
+        result.message
+    );
+    assert!(
+        !result.message.contains("near-duplicate-comment"),
+        "{}",
+        result.message
+    );
+}
+
+#[test]
+fn check_hook_input_given_short_overlap_reports_no_near_duplicate() {
+    // given: comments that share a couple of words but sit under the token floor
+    let content =
+        "# retry budget finite\nx = 1\n# retry budget grows\n# retry budget shrinks ?\ny = 2\n";
+    let input = duplicate_payload(content, None);
+
+    // when
+    let result = check_hook_input(&input, "");
+
+    // then: no near-duplicate reason appears
+    assert!(
+        !result.message.contains("near-duplicate-comment"),
+        "{}",
+        result.message
+    );
+}
+
+#[test]
+fn check_hook_input_given_spared_comment_duplicating_a_flag_does_not_report() {
+    // given: a flagged comment and a BDD comment with the same words (the BDD one is spared)
+    let content = "# given the retry budget is finite and small\nx = 1\n// given the retry budget is finite and small\ny = 2\n";
+    let input = duplicate_payload(content, None);
+
+    // when
+    let result = check_hook_input(&input, "");
+
+    // then: the spared comment neither counts nor is cited as a duplicate
+    assert!(
+        !result.message.contains("duplicate-comment"),
+        "{}",
+        result.message
+    );
+    assert!(
+        !result.message.contains("near-duplicate-comment"),
+        "{}",
+        result.message
+    );
+}
+
+#[test]
+fn check_hook_input_given_near_duplicates_cites_the_earlier_comment() {
+    // given: two long comments sharing most tokens, with one differing word each
+    let content = "# the retry budget is finite and the queue drains slowly\nx = 1\n# the retry budget is finite and the queue drains very slowly\ny = 2\n";
+    let input = duplicate_payload(content, None);
+
+    // when
+    let result = check_hook_input(&input, "");
+
+    // then: the later one is reported as a near duplicate of line 1
+    assert!(
+        result.message.contains(
+            "<comment line-number=\"3\" reason=\"near-duplicate-comment\" severity=\"low\">"
+        ),
+        "{}",
+        result.message
+    );
+    assert!(
+        !result.message.contains("reason=\"duplicate-comment\""),
+        "{}",
+        result.message
+    );
+}
+
+#[test]
+fn check_hook_input_given_config_exemption_drops_the_duplicate_finding() {
+    // given: an exact duplicate in a git root that exempts the duplicate reason for src/**
+    let root = git_root_fixture("duplicate-exempt");
+    std::fs::write(
+        root.join(".comment-checker.json"),
+        r#"{"allow":[{"glob":"src/**","reasons":["duplicate-comment"],"reason":"generated bulk docs"}]}"#,
+    )
+    .unwrap();
+    let content = "# the retry budget is finite\nx = 1\n# the retry budget is finite\ny = 2\n";
+    let input = duplicate_payload(content, Some(&root));
+
+    // when
+    let result = check_hook_input(&input, "");
+
+    // then: the finding is dropped while the per-comment findings remain
+    assert_eq!(result.exit_code, 2, "{}", result.message);
+    assert!(
+        !result.message.contains("duplicate-comment"),
+        "{}",
+        result.message
+    );
+    std::fs::remove_dir_all(&root).unwrap();
+}
