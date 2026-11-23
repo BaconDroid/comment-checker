@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::detector::{CommentDetector, DetectError};
 use crate::engine::{self, null_default};
 use crate::filters::{
-    COMMENT_VOLUME_REASON, CONFIG_FILE_NAME, SuppressionConfig, analyze_suppression,
-    apply_filters_with_markers, apply_min_confidence, is_config_path,
+    CONFIG_FILE_NAME, SuppressionConfig, analyze_suppression, apply_filters_with_markers,
+    apply_min_confidence, is_config_path, is_synthetic_reason,
 };
 use crate::language::language_for_path;
 use crate::models::{CommentInfo, Edit};
@@ -462,7 +462,11 @@ fn rewrite_approved(
     let (approved, kept): (Vec<CommentInfo>, Vec<CommentInfo>) = filtered
         .iter()
         .filter(|comment| {
-            comment.metadata.get("reason").map(String::as_str) != Some(COMMENT_VOLUME_REASON)
+            !comment
+                .metadata
+                .get("reason")
+                .map(String::as_str)
+                .is_some_and(is_synthetic_reason)
         })
         .cloned()
         .partition(|comment| {

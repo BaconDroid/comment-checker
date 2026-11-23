@@ -191,6 +191,8 @@ every reported comment is a `<comment>` element with a `reason` attribute:
 | `past-facing` | the comment narrates history ("preserve the existing behavior", "previously called") instead of stating the current behavior and its rationale |
 | `unnecessary-comment` | the default: no spare rule matched |
 | `comment-volume` | more than 20 flagged comments in one change, reported once (low severity) at the first of them, in addition to their own findings; spared, config-exempt, and marker comments do not count, and `--strip` never treats it as a removal target |
+| `duplicate-comment` | a later comment repeats an earlier flagged comment verbatim; cites the earlier line, low severity, never a `--strip` target |
+| `near-duplicate-comment` | a later comment shares at least eight of ten tokens with an earlier flagged one above the token floor; cites the earlier line, low severity, never a `--strip` target |
 | `restates-code: <evidence>` | whole-file `Write` only: the comment repeats adjacent code |
 | `narrates-control-flow` | whole-file `Write` only: the comment narrates a nearby loop |
 | `allow-added` | the comment is a suppression marker on a line this change added, so it suppresses nothing |

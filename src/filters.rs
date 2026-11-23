@@ -675,7 +675,10 @@ pub fn severity_for_reason(reason: &str) -> Option<Severity> {
             Some(Severity::High)
         }
         "narrates-control-flow" => Some(Severity::Medium),
-        "unnecessary-comment" | COMMENT_VOLUME_REASON => Some(Severity::Low),
+        "unnecessary-comment"
+        | COMMENT_VOLUME_REASON
+        | DUPLICATE_COMMENT_REASON
+        | NEAR_DUPLICATE_COMMENT_REASON => Some(Severity::Low),
         _ if reason.starts_with("restates-code:") => Some(Severity::Medium),
         _ => None,
     }
@@ -1241,6 +1244,21 @@ pub fn apply_filters(comments: &[CommentInfo]) -> Vec<CommentInfo> {
 /// Reason of the one finding that reports a change adding more than [`MAX_FLAGGED_COMMENTS`].
 pub(crate) const COMMENT_VOLUME_REASON: &str = "comment-volume";
 
+pub(crate) const DUPLICATE_COMMENT_REASON: &str = "duplicate-comment";
+
+pub(crate) const NEAR_DUPLICATE_COMMENT_REASON: &str = "near-duplicate-comment";
+
+pub(crate) fn is_synthetic_reason(reason: &str) -> bool {
+    matches!(
+        reason,
+        COMMENT_VOLUME_REASON | DUPLICATE_COMMENT_REASON | NEAR_DUPLICATE_COMMENT_REASON
+    )
+}
+
+const NEAR_DUPLICATE_TOKEN_FLOOR: usize = 6;
+
+const NEAR_DUPLICATE_OVERLAP_TENTHS: usize = 8;
+
 /// The most flagged comments one change may add before the change itself is reported.
 ///
 /// A change that explains its non-obvious spots needs a handful of comments; past twenty flagged
@@ -1294,7 +1312,122 @@ pub(crate) fn apply_filters_with_markers(
             }
         }
     }
+    append_duplicate_findings(&mut findings, &is_flagged, config);
     findings
+}
+
+fn duplicate_text(comment: &CommentInfo) -> String {
+    comment
+        .text
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
+
+fn duplicate_tokens(text: &str) -> Vec<String> {
+    text.split(|character: char| !character.is_alphanumeric())
+        .filter(|token| !token.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+fn near_duplicate(left: &[String], right: &[String]) -> bool {
+    if left.len() < NEAR_DUPLICATE_TOKEN_FLOOR || right.len() < NEAR_DUPLICATE_TOKEN_FLOOR {
+        return false;
+    }
+    let mut shared = 0;
+    for token in left {
+        if right.contains(token) {
+            shared += 1;
+        }
+    }
+    let union = left.len() + right.len() - shared;
+    union > 0 && shared * 10 >= union * NEAR_DUPLICATE_OVERLAP_TENTHS
+}
+
+fn append_duplicate_findings(
+    findings: &mut Vec<CommentInfo>,
+    is_flagged: &dyn Fn(&CommentInfo) -> bool,
+    config: &SuppressionConfig,
+) {
+    let source_positions: Vec<usize> = findings
+        .iter()
+        .enumerate()
+        .filter(|(_, comment)| {
+            is_flagged(comment)
+                && !comment
+                    .metadata
+                    .get("reason")
+                    .map(String::as_str)
+                    .is_some_and(is_synthetic_reason)
+        })
+        .map(|(position, _)| position)
+        .collect();
+    let sources: Vec<(String, Vec<String>, usize, String, CommentType, bool)> = source_positions
+        .iter()
+        .map(|&position| {
+            let comment = &findings[position];
+            let text = duplicate_text(comment);
+            let tokens = duplicate_tokens(&text);
+            (
+                text,
+                tokens,
+                comment.line_number,
+                comment.file_path.clone(),
+                comment.comment_type,
+                comment.is_docstring,
+            )
+        })
+        .collect();
+    let mut extra = Vec::new();
+    for (index, (text, tokens, line, file_path, comment_type, is_docstring)) in
+        sources.iter().enumerate()
+    {
+        let earlier =
+            sources[..index]
+                .iter()
+                .find_map(|(other_text, other_tokens, other_line, ..)| {
+                    if other_text == text {
+                        Some((*other_line, true))
+                    } else if near_duplicate(other_tokens, tokens) {
+                        Some((*other_line, false))
+                    } else {
+                        None
+                    }
+                });
+        let Some((earlier_line, exact)) = earlier else {
+            continue;
+        };
+        let reason = if exact {
+            DUPLICATE_COMMENT_REASON
+        } else {
+            NEAR_DUPLICATE_COMMENT_REASON
+        };
+        if config.exempts(file_path.as_str(), reason) {
+            continue;
+        }
+        extra.push((
+            source_positions[index],
+            CommentInfo {
+                text: format!(
+                    "This comment repeats the flagged comment at line {earlier_line}; keep one copy."
+                ),
+                line_number: *line,
+                file_path: file_path.clone(),
+                comment_type: *comment_type,
+                is_docstring: *is_docstring,
+                metadata: std::collections::BTreeMap::from([
+                    ("reason".to_owned(), reason.to_owned()),
+                    ("severity".to_owned(), Severity::Low.as_str().to_owned()),
+                ]),
+                byte_span: None,
+            },
+        ));
+    }
+    for (position, finding) in extra.into_iter().rev() {
+        findings.insert(position + 1, finding);
+    }
 }
 
 fn flag_comments(

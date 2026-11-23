@@ -707,3 +707,29 @@ fn cli_given_strip_never_removes_for_the_volume_finding() -> std::io::Result<()>
     assert_eq!(std::fs::read_to_string(&file)?, expected);
     Ok(())
 }
+
+#[test]
+fn cli_given_strip_does_not_remove_duplicate_findings() -> std::io::Result<()> {
+    // given: a file with an exact duplicate comment, and a remove entry approving the class
+    let dir = TempDir::new("duplicate")?;
+    let target = dir.0.join("tests/app.py");
+    std::fs::create_dir_all(target.parent().unwrap())?;
+    std::fs::write(
+        &target,
+        "# the retry budget is finite\nx = 1\n# the retry budget is finite\ny = 2\n",
+    )?;
+    std::fs::write(
+        dir.0.join(".comment-checker.json"),
+        r#"{"remove":[{"glob":"tests/**","reasons":["duplicate-comment"],"reason":"bulk duplication approved"}]}"#,
+    )?;
+    let input = strip_payload("tests/app.py", &dir.0);
+
+    // when
+    let output = run_checker(&input, &["--strip"])?;
+
+    // then: the duplicate finding is synthetic, so nothing is rewritten on its account
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("duplicate-comment"), "stderr: {stderr}");
+    assert!(!stderr.contains("removed 3"), "stderr: {stderr}");
+    Ok(())
+}
