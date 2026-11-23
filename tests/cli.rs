@@ -889,7 +889,61 @@ fn cli_strip_propose_lists_the_removal_without_writing() -> std::io::Result<()> 
         stderr.contains("would remove 1 flagged comment(s)"),
         "stderr: {stderr}"
     );
-    assert!(stderr.contains("balanced policy"), "stderr: {stderr}");
+    assert!(stderr.contains("aggressive policy"), "stderr: {stderr}");
     assert_eq!(std::fs::read_to_string(&file)?, "# legacy prose\nx = 1\n");
+    Ok(())
+}
+
+#[test]
+fn cli_strip_policy_ladder_matches_the_shared_tiers() -> std::io::Result<()> {
+    // given: a low reason (unnecessary-comment) and a high reason (agent-memo), each approved
+    let dir = TempDir::new("policy-ladder")?;
+    let file = dir.path().join("l.py");
+    std::fs::write(
+        dir.path().join(".comment-checker.json"),
+        r#"{"remove":[{"glob":"l.py","reasons":["unnecessary-comment","agent-memo"],"reason":"bulk cleanup approved for this tree"}]}"#,
+    )?;
+    let input = strip_payload("l.py", dir.path());
+    let cases = [
+        ("# legacy prose\nx = 1\n", "conservative", "left untouched"),
+        ("# legacy prose\nx = 1\n", "balanced", "left untouched"),
+        (
+            "# legacy prose\nx = 1\n",
+            "aggressive",
+            "removed 1 flagged comment(s)",
+        ),
+        (
+            "# Changed from old to new\nx = 1\n",
+            "conservative",
+            "removed 1 flagged comment(s)",
+        ),
+        (
+            "# Changed from old to new\nx = 1\n",
+            "balanced",
+            "removed 1 flagged comment(s)",
+        ),
+        (
+            "# Changed from old to new\nx = 1\n",
+            "aggressive",
+            "removed 1 flagged comment(s)",
+        ),
+    ];
+
+    // when/then: conservative takes high only, balanced takes high and medium, aggressive all
+    for (content, policy, expected) in cases {
+        std::fs::write(&file, content)?;
+        let output = run_checker(&input, &["--strip", "--strip-policy", policy])?;
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains(expected),
+            "{policy} on {content:?}: {stderr}"
+        );
+        if expected.starts_with("removed") {
+            assert!(
+                stderr.contains(&format!("{policy} policy")),
+                "{policy}: {stderr}"
+            );
+        }
+    }
     Ok(())
 }

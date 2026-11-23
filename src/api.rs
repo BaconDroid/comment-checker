@@ -559,9 +559,10 @@ fn rewrite_approved(
             Ok(()) => strip_message(
                 &HookOutcome::Findings(report),
                 &format!(
-                    "removed {} flagged comment(s) from {}{kept_suffix}",
+                    "removed {} flagged comment(s) from {}{kept_suffix} ({} policy)",
                     approved.len(),
-                    target.display()
+                    target.display(),
+                    policy.as_str()
                 ),
             ),
             Err(error) => strip_message(
@@ -941,11 +942,15 @@ pub fn detect_comments_json(content: &str, file_path: &str, include_docstrings: 
 
 const METRICS_ENV: &str = "COMMENT_CHECKER_METRICS";
 
-/// The requested `--strip-policy`, defaulting to balanced on absent or unknown values.
+/// The requested `--strip-policy`; absent or unknown values keep comment-checker's historical
+/// default, where `--strip` removes every reason it flags.
+///
+/// The ladder itself is identical to test-checker's (`conservative` < `balanced` < `aggressive`),
+/// so a stricter default here is a one-value change, not a new vocabulary.
 fn parse_strip_policy(value: Option<&str>) -> StripPolicy {
     value
         .and_then(|value| StripPolicy::parse(value.trim()))
-        .unwrap_or(StripPolicy::Balanced)
+        .unwrap_or(StripPolicy::Aggressive)
 }
 
 fn confidence_rank(level: Option<&str>) -> u8 {

@@ -261,7 +261,7 @@ as `proven-only`, and the variable is read on every run.
 |---|---|
 | `--prompt <text>` | replace the default message. `{{comments}}` is replaced by the XML; without it the custom text is the whole message |
 | `--strip` | after reporting, remove the flagged comments an approval covers and the policy allows; all-or-nothing (see [strip](#strip)) |
-| `--strip-policy <level>` | `conservative` (high severity only), `balanced` (default: every tier), or `aggressive` (same as balanced pending a stricter audit) |
+| `--strip-policy <level>` | `conservative` (high severity only), `balanced` (high and medium), or `aggressive` (default: every tier) |
 | `--propose` | report what `--strip` would remove and write nothing |
 | `--version` | print `comment-checker <version>` to stdout and exit `0` |
 | `--min-confidence <level>` | accepted by the shared argument parser and ignored (comments carry no confidence) |
@@ -338,17 +338,18 @@ in `comment-checker` and `test-checker`:
 
 | Level | Removes | Use |
 |:--|:--|:--|
-| `conservative` | high severity only | the proven smells; a legacy tree you want to keep quiet |
-| `balanced` (default) | every tier | the normal cleanup: the reported reason is the target |
-| `aggressive` | every tier | reserved for a future stricter audit; today identical to `balanced` |
+| `conservative` | high severity only | the proven smells: commented-out code, agent memos, TODOs, past-facing narration |
+| `balanced` | high and medium | adds the adjacency-dependent reasons (`restates-code`, `narrates-control-flow`) |
+| `aggressive` (default) | every tier | also the residual prose (`unnecessary-comment`) and the synthetic summaries; today's behaviour |
 
-`balanced` preserves the previous default: the reported reason is the cleanup target. The policy
-narrows the removal by severity, and an approval narrows it again when a `remove` entry exists.
-`--propose` prints the count and the policy that would apply without writing, so the review
-happens before the run.
+The ladder is the same in both binaries, so `conservative` < `balanced` < `aggressive` means the
+same thing in `comment-checker` and `test-checker`. comment-checker keeps `aggressive` as its default
+because its normal cleanup target is the residual prose; test-checker defaults to `balanced` because
+its low tier is still telemetry. An approval still gates every removal: the policy narrows what an
+entry may remove, it never replaces the entry.
 
-The compliance target is the same in both binaries: automate repetition, keep the human decision on
-what is acceptable in a given tree.
+`--propose` prints the count and the policy that would apply without writing, so the review happens
+before the run.
 
 ## limits
 

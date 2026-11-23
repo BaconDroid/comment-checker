@@ -56,13 +56,14 @@ impl StripPolicy {
 
     /// Whether a reason at this severity may be removed on its own.
     ///
-    /// comment-checker's residual prose (`unnecessary-comment`) is a low-tier reason but the
-    /// normal cleanup target, so `balanced` covers every tier and `conservative` is the opt-out
-    /// for a tree where only proven smells should disappear.
+    /// The ladder is identical to test-checker's: `conservative` takes only the proven tier,
+    /// `balanced` adds the adjacency-dependent medium tier, and `aggressive` takes every tier
+    /// including the residual prose and the synthetic summaries.
     #[must_use]
     pub(crate) const fn allows(self, severity: Severity) -> bool {
         match self {
-            Self::Aggressive | Self::Balanced => true,
+            Self::Aggressive => true,
+            Self::Balanced => matches!(severity, Severity::High | Severity::Medium),
             Self::Conservative => matches!(severity, Severity::High),
         }
     }
