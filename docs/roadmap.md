@@ -19,7 +19,6 @@ the same branch name in both repositories.
 
 | # | Item | Status |
 |:-:|:-----|:------|
-| B4 | `scripts/doctor.sh` audit of legacy in-file markers. | later |
 
 
 ## Block C - Verdict quality
