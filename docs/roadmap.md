@@ -32,6 +32,8 @@ the same branch name in both repositories.
 |:-:|:-----|:------|
 | D2 | Secondary OSS corpus with a tracked manifest (URL, license, HEAD, commit and path per payload; payload bytes outside the checkout). | later |
 
+| D3 | Restore the weekly sf-differential workflow that `eval/README.md` references but the repository does not contain. | later |
+
 ## Not adopted
 
 | Idea | Why |
