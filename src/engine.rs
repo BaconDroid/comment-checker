@@ -123,20 +123,26 @@ pub struct Options {
     pub prompt: String,
     pub min_confidence: Option<String>,
     pub strip: bool,
+    /// `--strip-policy <level>` / `--strip-policy=<level>`; None keeps each repo's default.
+    pub strip_policy: Option<String>,
+    /// `--propose` reports what `--strip` would remove without writing anything.
+    pub propose: bool,
     pub version: bool,
 }
 
 /// Hand-rolled argument parser.
 ///
 /// Recognises `--prompt <text>` / `--prompt=<text>`, `--min-confidence <level>` /
-/// `--min-confidence=<level>`, the removal-pass `--strip`, and `--version`; every other argument is
-/// ignored. A value consumed by `--prompt`/`--min-confidence` is never read as a flag, so
+/// `--min-confidence=<level>`, `--strip-policy <level>`, the removal pass `--strip` / `--propose`,
+/// and `--version`; every other argument is ignored. A value consumed by `--prompt`/`--min-confidence` is never read as a flag, so
 /// `--prompt --version` sets the prompt instead of printing the version.
 #[must_use]
 pub fn parse_options(arguments: &[String]) -> Options {
     let mut prompt = String::new();
     let mut min_confidence = None;
     let mut strip = false;
+    let mut strip_policy = None;
+    let mut propose = false;
     let mut version = false;
     let mut index = 0;
     while index < arguments.len() {
@@ -155,8 +161,17 @@ pub fn parse_options(arguments: &[String]) -> Options {
                 min_confidence = Some(value.clone());
                 index += 1;
             }
+        } else if let Some(value) = argument.strip_prefix("--strip-policy=") {
+            strip_policy = Some(value.to_owned());
+        } else if argument == "--strip-policy" {
+            if let Some(value) = arguments.get(index + 1) {
+                strip_policy = Some(value.clone());
+                index += 1;
+            }
         } else if argument == "--strip" {
             strip = true;
+        } else if argument == "--propose" {
+            propose = true;
         } else if argument == "--version" {
             version = true;
         }
@@ -166,6 +181,8 @@ pub fn parse_options(arguments: &[String]) -> Options {
         prompt,
         min_confidence,
         strip,
+        strip_policy,
+        propose,
         version,
     }
 }

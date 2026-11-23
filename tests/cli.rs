@@ -842,3 +842,54 @@ fn cli_metrics_report_withheld_reasons_with_distinct_keys() -> std::io::Result<(
     );
     Ok(())
 }
+
+#[test]
+fn cli_strip_policy_conservative_keeps_low_reasons() -> std::io::Result<()> {
+    // given: a prose comment whose reason is low severity, approved for removal
+    let dir = TempDir::new("policy-conservative")?;
+    let file = dir.path().join("c.py");
+    std::fs::write(&file, "# legacy prose\nx = 1\n")?;
+    std::fs::write(
+        dir.path().join(".comment-checker.json"),
+        r#"{"remove":[{"glob":"c.py","reasons":["unnecessary-comment"],"reason":"legacy prose approved"}]}"#,
+    )?;
+    let input = strip_payload("c.py", dir.path());
+
+    // when: conservative keeps only the proven tier
+    let output = run_checker(&input, &["--strip", "--strip-policy", "conservative"])?;
+
+    // then
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("left untouched - kept 1 flagged comment(s) awaiting approval"),
+        "stderr: {stderr}"
+    );
+    assert_eq!(std::fs::read_to_string(&file)?, "# legacy prose\nx = 1\n");
+    Ok(())
+}
+
+#[test]
+fn cli_strip_propose_lists_the_removal_without_writing() -> std::io::Result<()> {
+    // given: an approved prose comment
+    let dir = TempDir::new("policy-propose")?;
+    let file = dir.path().join("p.py");
+    std::fs::write(&file, "# legacy prose\nx = 1\n")?;
+    std::fs::write(
+        dir.path().join(".comment-checker.json"),
+        r#"{"remove":[{"glob":"p.py","reasons":["unnecessary-comment"],"reason":"legacy prose approved"}]}"#,
+    )?;
+    let input = strip_payload("p.py", dir.path());
+
+    // when
+    let output = run_checker(&input, &["--strip", "--propose"])?;
+
+    // then: the proposal names the count and policy, and the file is untouched
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("would remove 1 flagged comment(s)"),
+        "stderr: {stderr}"
+    );
+    assert!(stderr.contains("balanced policy"), "stderr: {stderr}");
+    assert_eq!(std::fs::read_to_string(&file)?, "# legacy prose\nx = 1\n");
+    Ok(())
+}

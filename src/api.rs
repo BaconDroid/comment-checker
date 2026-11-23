@@ -9,6 +9,7 @@ use crate::filters::{
     apply_filters_with_markers, apply_min_confidence, is_config_path, is_synthetic_reason,
 };
 use crate::language::language_for_path;
+use crate::models::StripPolicy;
 use crate::models::{CommentInfo, Edit};
 use crate::output::{format_config_edit_message, format_hook_message};
 
@@ -176,6 +177,8 @@ pub fn check_hook_input_from_reader<R: std::io::Read>(
                     &options.prompt,
                     true,
                     options.min_confidence.as_deref(),
+                    parse_strip_policy(options.strip_policy.as_deref()),
+                    options.propose,
                 )
             } else {
                 evaluate(
@@ -387,6 +390,8 @@ fn evaluate_strip(
     custom_prompt: &str,
     include_docstrings: bool,
     min_confidence: Option<&str>,
+    policy: StripPolicy,
+    propose: bool,
 ) -> HookCheckResult {
     if classify_tool(&hook_input.tool_name).is_none() {
         return skip("Unsupported tool");
@@ -466,6 +471,7 @@ fn evaluate_strip(
         ),
         min_confidence,
     );
+
     if filtered.is_empty() {
         return strip_message(
             &HookOutcome::Clean,
@@ -473,20 +479,34 @@ fn evaluate_strip(
         );
     }
     let report = format_hook_message(&filtered, custom_prompt);
-    rewrite_approved(&target, &content, &filtered, &config, report)
+    rewrite_approved(
+        &target,
+        &content,
+        &filtered,
+        &config,
+        report,
+        &RemovalRequest { policy, propose },
+    )
 }
 
 /// Remove the flagged comments the config approves and keep the rest, summarising both.
 ///
 /// `report` lists every finding whether or not it is removed. The comment-volume finding describes
 /// the whole change rather than one comment, so it is never a removal target.
+struct RemovalRequest {
+    policy: StripPolicy,
+    propose: bool,
+}
+
 fn rewrite_approved(
     target: &Path,
     content: &str,
     filtered: &[CommentInfo],
     config: &SuppressionConfig,
     report: String,
+    removal: &RemovalRequest,
 ) -> HookCheckResult {
+    let RemovalRequest { policy, propose } = *removal;
     let (approved, kept): (Vec<CommentInfo>, Vec<CommentInfo>) = filtered
         .iter()
         .filter(|comment| {
@@ -500,11 +520,28 @@ fn rewrite_approved(
         .partition(|comment| {
             let reason = comment.metadata.get("reason").map_or("", String::as_str);
             config.approves_removal(comment.file_path.as_str(), reason)
+                && comment
+                    .metadata
+                    .get("reason")
+                    .map(String::as_str)
+                    .and_then(crate::filters::severity_for_reason)
+                    .is_some_and(|severity| policy.allows(severity))
         });
     let kept_note = format!(
         "kept {} flagged comment(s) awaiting approval in {CONFIG_FILE_NAME}",
         kept.len()
     );
+    if propose {
+        return strip_message(
+            &HookOutcome::Findings(report),
+            &format!(
+                "would remove {} flagged comment(s) from {} under the {} policy; {kept_note}",
+                approved.len(),
+                target.display(),
+                policy.as_str()
+            ),
+        );
+    }
     if approved.is_empty() {
         return strip_message(
             &HookOutcome::Findings(report),
@@ -903,6 +940,13 @@ pub fn detect_comments_json(content: &str, file_path: &str, include_docstrings: 
 }
 
 const METRICS_ENV: &str = "COMMENT_CHECKER_METRICS";
+
+/// The requested `--strip-policy`, defaulting to balanced on absent or unknown values.
+fn parse_strip_policy(value: Option<&str>) -> StripPolicy {
+    value
+        .and_then(|value| StripPolicy::parse(value.trim()))
+        .unwrap_or(StripPolicy::Balanced)
+}
 
 fn confidence_rank(level: Option<&str>) -> u8 {
     match level {
