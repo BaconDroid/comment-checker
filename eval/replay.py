@@ -139,6 +139,19 @@ def parse_reasons(stderr: str) -> list[str]:
     return [html.unescape(reason) for reason in FINDING_REASON.findall(stderr)]
 
 
+
+METRICS_ENV = "COMMENT_CHECKER_METRICS"
+
+
+def flag_rates(result: dict[str, object]) -> dict[str, float]:
+    """Flagged findings per payload, per reason; the denominator is every payload."""
+    payloads = result["payloads"]
+    per_reason = result["per_reason"]
+    assert isinstance(payloads, int) and isinstance(per_reason, dict)
+    if payloads == 0:
+        return {}
+    return {reason: round(count / payloads, 4) for reason, count in sorted(per_reason.items())}
+
 def run(binary: str, payloads: list[bytes]) -> dict[str, object]:
     reasons: collections.Counter[str] = collections.Counter()
     exit2 = 0
@@ -157,12 +170,14 @@ def run(binary: str, payloads: list[bytes]) -> dict[str, object]:
         elif process.returncode != 0:
             raise ReplayError(f"{binary} exited {process.returncode}, expected 0 or 2")
         reasons.update(parse_reasons(process.stderr.decode("utf-8", errors="replace")))
-    return {
+    result = {
         "payloads": len(payloads),
         "exit2": exit2,
         "findings": sum(reasons.values()),
         "per_reason": dict(sorted(reasons.items())),
     }
+    result["flag_rate"] = flag_rates(result)
+    return result
 
 
 def delta(before: dict[str, object], after: dict[str, object]) -> dict[str, object]:
@@ -214,6 +229,12 @@ def render(report: dict[str, object]) -> str:
                 f"{result['findings']} findings"
             )
             lines.extend(f"  {reason}: {count}" for reason, count in result["per_reason"].items())
+            if result.get("flag_rate"):
+                lines.append("  per-reason flag rate (flagged/payloads):")
+                lines.extend(
+                    f"    {reason}: {rate}"
+                    for reason, rate in result["flag_rate"].items()
+                )
             if not result["per_reason"]:
                 lines.append("  (no findings)")
     if "delta" in report:

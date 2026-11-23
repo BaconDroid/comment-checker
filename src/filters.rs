@@ -1238,7 +1238,12 @@ fn segment_matches(pattern: &str, text: &str) -> bool {
 
 #[must_use]
 pub fn apply_filters(comments: &[CommentInfo]) -> Vec<CommentInfo> {
-    flag_comments(comments, &[], &SuppressionConfig::default())
+    flag_comments(
+        comments,
+        &[],
+        &SuppressionConfig::default(),
+        &mut FilterMetrics::default(),
+    )
 }
 
 /// Reason of the one finding that reports a change adding more than [`MAX_FLAGGED_COMMENTS`].
@@ -1247,6 +1252,11 @@ pub(crate) const COMMENT_VOLUME_REASON: &str = "comment-volume";
 pub(crate) const DUPLICATE_COMMENT_REASON: &str = "duplicate-comment";
 
 pub(crate) const NEAR_DUPLICATE_COMMENT_REASON: &str = "near-duplicate-comment";
+
+#[derive(Debug, Default)]
+pub(crate) struct FilterMetrics {
+    pub(crate) suppressed_reasons: std::collections::BTreeMap<String, usize>,
+}
 
 pub(crate) fn is_synthetic_reason(reason: &str) -> bool {
     matches!(
@@ -1281,8 +1291,9 @@ pub(crate) fn apply_filters_with_markers(
     comments: &[CommentInfo],
     marker_reasons: &[Option<&'static str>],
     config: &SuppressionConfig,
+    metrics: &mut FilterMetrics,
 ) -> Vec<CommentInfo> {
-    let mut findings = flag_comments(comments, marker_reasons, config);
+    let mut findings = flag_comments(comments, marker_reasons, config, metrics);
     // Marker bookkeeping carries no severity tier, so a tier marks a flagged comment.
     let is_flagged = |comment: &CommentInfo| comment.metadata.contains_key("severity");
     let flagged = findings
@@ -1434,6 +1445,7 @@ fn flag_comments(
     comments: &[CommentInfo],
     marker_reasons: &[Option<&'static str>],
     config: &SuppressionConfig,
+    metrics: &mut FilterMetrics,
 ) -> Vec<CommentInfo> {
     let keyword_acquit = keyword_acquit_mode();
     comments
@@ -1456,6 +1468,7 @@ fn flag_comments(
                 .cloned()
                 .unwrap_or_else(|| reason_for(comment).to_owned());
             if config.exempts(kept.file_path.as_str(), &reason) {
+                *metrics.suppressed_reasons.entry(reason).or_default() += 1;
                 return None;
             }
             kept.metadata.insert("reason".to_owned(), reason);

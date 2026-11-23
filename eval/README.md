@@ -55,6 +55,12 @@ python3 eval/diff_vs_sf.py --sf /path/to/sf-checkout --root src --root tests
 Pin bump: update the commit in `sf-corpus/README.md`, re-copy `eval/corpus.json`, and triage the new
 group (2).
 
+## Reason metrics
+
+`COMMENT_CHECKER_METRICS=1` (exactly `1`) appends one `[check-comments] metrics: <reason> <count>` line per reason to stderr; withheld findings use `withheld-config:<reason>` and `withheld-confidence:<reason>` keys. Output, findings and exit codes are unchanged, and anything else leaves stderr byte-identical.
+
+`eval/replay.py` reports per-reason flag rates (flagged findings divided by every payload) beside the raw counts. `eval/test_replay_rates.py` checks that arithmetic against three literal payloads, so a denominator change fails there instead of drifting in the report. Manual use only, like the rest of `eval/`.
+
 ## Precision replay
 
 `replay.py` (D1) measures what a detector or classifier change does to real comment history. It is
