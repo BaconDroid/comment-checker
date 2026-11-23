@@ -342,10 +342,13 @@ in `comment-checker` and `test-checker`:
 | `balanced` (default) | every tier | the normal cleanup: the reported reason is the target |
 | `aggressive` | every tier | reserved for a future stricter audit; today identical to `balanced` |
 
-`balanced` is today's behaviour: `comment-checker` reports and `--strip` removes the same set. The
-policy narrows the removal; an approval narrows it again when a `remove` entry exists. `--propose`
-prints the list and the aggregate count without writing, so the same review can happen before an
-`--strip` run.
+`balanced` preserves the previous default: the reported reason is the cleanup target. The policy
+narrows the removal by severity, and an approval narrows it again when a `remove` entry exists.
+`--propose` prints the count and the policy that would apply without writing, so the review
+happens before the run.
+
+The compliance target is the same in both binaries: automate repetition, keep the human decision on
+what is acceptable in a given tree.
 
 ## limits
 
