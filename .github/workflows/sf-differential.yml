@@ -1,0 +1,44 @@
+name: sf differential
+
+# Advisory compatibility check against the reference classifier. Weekly and on demand only,
+# so it never gates a pull request; the README documents it as off-gate.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  TSLP_LINK_MODE: static
+
+jobs:
+  differential:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        run: rustup toolchain install stable --profile minimal
+
+      - name: Build comment-checker
+        run: cargo build --release -p comment-checker
+
+      - name: Check out the pinned sf checkout
+        uses: actions/checkout@v4
+        with:
+          repository: systemfsoftware/comment-checker
+          ref: 44e1c87
+          path: .sf-checkout
+
+      - name: Build sf
+        run: cargo build --release
+        working-directory: .sf-checkout
+
+      - name: Differential
+        run: python3 eval/diff_vs_sf.py --sf .sf-checkout/target/release --root src --root tests
